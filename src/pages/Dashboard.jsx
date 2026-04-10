@@ -5,6 +5,7 @@ import { STAGE_BAR_COLORS } from '../lib/constants';
 import { seedActivity } from '../data/seed';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { SmAvatar } from '../components/shared/Avatar';
+import { useNavigate } from 'react-router-dom';
 
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -115,6 +116,7 @@ function MembersByGroupChart({ members, groups }) {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export function Dashboard({ members, groups, stages, setPage, setSelectedMember, onAddMember }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const visibleMembers = getVisibleMembers(user, members, groups);
   const active         = visibleMembers.filter(m => m.status === 'active').length;
   const newApplicants  = visibleMembers.filter(m => m.enrollmentStage === 'new_applicant').length;
@@ -207,7 +209,7 @@ export function Dashboard({ members, groups, stages, setPage, setSelectedMember,
               <h2 className="text-lg font-bold font-headline text-on-surface">Blueprint Journey</h2>
               <p className="text-xs text-on-surface-variant mt-0.5">Members at each stage</p>
             </div>
-            <button onClick={() => setPage('engine')}
+            <button onClick={() => navigate('/engine')}
               className="text-xs font-semibold text-primary uppercase tracking-widest hover:underline">
               Configure →
             </button>
@@ -290,7 +292,7 @@ export function Dashboard({ members, groups, stages, setPage, setSelectedMember,
       <section className="bg-surface-container-lowest rounded-2xl p-6 border border-outline-variant/5">
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-lg font-bold font-headline">Recently Joined</h2>
-          <button onClick={() => setPage('members')}
+          <button onClick={() => navigate('/members')}
             className="text-xs font-semibold text-primary hover:underline">
             View All Members →
           </button>

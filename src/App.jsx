@@ -1,9 +1,9 @@
 // ─── ChurchOS — App.jsx ──────────────────────────────────────────────────────
-// Routing shell. Complex pages are defined here inline.
-// Dashboard, Events, Messages, Attendance, Settings live in /pages/
+// React Router v7 — URL-based navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 
 // ── Lib ──────────────────────────────────────────────────────────────────────
 import {
@@ -16,12 +16,12 @@ import {
   canAdvance, advanceMember,
   applyOverride, clearOverride,
   getMemberStageName,
-  evaluateRule, getRuleFailures, checkEligibility,
+  checkEligibility,
 } from './lib/engine';
 import { mkOverride, createMemberDefaults } from './lib/members';
 import {
   ENROLLMENT_STAGE_COLORS, ENROLLMENT_STAGE_LABELS,
-  STAGE_COLORS, STAGE_ICONS, STAGE_BAR_COLORS,
+  STAGE_COLORS, STAGE_ICONS,
 } from './lib/constants';
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -31,8 +31,9 @@ import { seedMembers, seedGroups, seedStages, seedRules, seedUsers } from './dat
 import { Avatar, SmAvatar }        from './components/shared/Avatar';
 import { StatusBadge, StageBadge } from './components/shared/StatusBadge';
 import { Toast }                   from './components/shared/Toast';
+import { Sidebar }                 from './components/layout/Sidebar';
 
-// ── Pages (split into own files) ─────────────────────────────────────────────
+// ── Pages ────────────────────────────────────────────────────────────────────
 import { Dashboard }  from './pages/Dashboard';
 import { Events }     from './pages/Events';
 import { Messages }   from './pages/Messages';
@@ -40,7 +41,7 @@ import { Attendance } from './pages/Attendance';
 import { Settings }   from './pages/Settings';
 
 // =============================================================================
-// AUTH PAGES
+// AUTH PAGES (no router — shown before shell mounts)
 // =============================================================================
 
 function LoginPage({ onLogin, users }) {
@@ -146,9 +147,9 @@ function FirstTimePasswordPage({ user, onComplete }) {
 
   const handleSubmit = () => {
     setError('');
-    if (!newPass.trim())        { setError('Password cannot be empty.');              return; }
-    if (newPass.length < 6)     { setError('Password must be at least 6 characters.'); return; }
-    if (newPass !== confirmPass) { setError('Passwords do not match.');               return; }
+    if (!newPass.trim())         { setError('Password cannot be empty.');              return; }
+    if (newPass.length < 6)      { setError('Password must be at least 6 characters.'); return; }
+    if (newPass !== confirmPass)  { setError('Passwords do not match.');               return; }
     onComplete(hashPassword(newPass));
   };
 
@@ -352,7 +353,6 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
             ))}
           </div>
         </div>
-
         <div className="p-7 space-y-5 overflow-y-auto flex-1">
           {step === 1 && (
             <>
@@ -437,7 +437,6 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
             </>
           )}
         </div>
-
         <div className="p-6 pt-0 flex gap-3 justify-between flex-shrink-0 border-t border-surface-container mt-2">
           {step === 2
             ? <button onClick={() => setStep(1)} className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors flex items-center gap-1">
@@ -461,8 +460,9 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
 // MEMBERS PAGE
 // =============================================================================
 
-function Members({ members, groups, stages, setMembers, setPage, setSelectedMember, toast }) {
+function Members({ members, groups, stages, setMembers, toast }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch]             = useState('');
   const [filterStage, setFilterStage]   = useState('All Stages');
   const [filterGroup, setFilterGroup]   = useState('All Groups');
@@ -527,12 +527,12 @@ function Members({ members, groups, stages, setMembers, setPage, setSelectedMemb
             { label: 'Stage',     value: filterStage,  set: setFilterStage,  opts: ['All Stages',  ...stages.map(s => s.name)]  },
             { label: 'Group',     value: filterGroup,  set: setFilterGroup,  opts: ['All Groups',  ...groups.map(g => g.name)]  },
             { label: 'Lifecycle', value: filterStatus, set: setFilterStatus, opts: ['All', 'new_applicant', 'approved', 'in_discipleship'] },
-          ].map(f => (
-            <div key={f.label}>
-              <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">{f.label}</label>
-              <select value={f.value} onChange={e => f.set(e.target.value)}
+          ].map(fi => (
+            <div key={fi.label}>
+              <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">{fi.label}</label>
+              <select value={fi.value} onChange={e => fi.set(e.target.value)}
                 className="bg-transparent border-0 text-sm font-semibold text-primary focus:ring-0 cursor-pointer p-0 pr-6 outline-none">
-                {f.opts.map(o => <option key={o}>{o}</option>)}
+                {fi.opts.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
           ))}
@@ -541,7 +541,7 @@ function Members({ members, groups, stages, setMembers, setPage, setSelectedMemb
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filtered.map(m => (
             <div key={m.id} className="member-card bg-surface-container-lowest rounded-xl p-6 cursor-pointer"
-              onClick={() => { setSelectedMember(m); setPage('profile'); }}>
+              onClick={() => navigate(`/members/${m.id}`)}>
               <div className="flex items-start justify-between mb-5">
                 <div className="border-4 border-white shadow-sm rounded-2xl"><Avatar member={m} size={14} /></div>
                 <StatusBadge status={m.status} enrollmentStage={m.enrollmentStage} />
@@ -588,14 +588,21 @@ function Members({ members, groups, stages, setMembers, setPage, setSelectedMemb
 }
 
 // =============================================================================
-// PROFILE (MEMBER DETAIL)
+// MEMBER DETAIL (PROFILE) — now at /members/:id
 // =============================================================================
 
 function AssignMentorModal({ currentMember, members, stages, onClose, onAssign }) {
-  const [search,   setSearch]   = useState('');
+  const [search, setSearch]     = useState('');
   const [selected, setSelected] = useState(currentMember.mentorId ? { name: currentMember.mentor, id: currentMember.mentorId } : null);
 
-  const eligible = members.filter(m => m.id !== currentMember.id && m.status === 'active' && m.currentStageIndex >= 2);
+  // Mentor must be at Build stage (index 3, stage id 4)
+// AND have completed task[0] = "Complete Leadership Training"
+const eligible = members.filter(m =>
+  m.id !== currentMember.id &&
+  m.status === 'active' &&
+  m.currentStageIndex === 3 &&
+  m.tasks[4]?.[0] === true
+);
   const filtered = eligible.filter(m => !search || m.name.toLowerCase().includes(search.toLowerCase()) || (m.group || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -606,7 +613,7 @@ function AssignMentorModal({ currentMember, members, stages, onClose, onAssign }
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Mentorship</p>
               <h3 className="text-xl font-bold font-headline">Assign a Mentor</h3>
-              <p className="text-xs text-on-surface-variant mt-1">Active members at Stage 3 or higher</p>
+              <p className="text-xs text-on-surface-variant mt-1">Must be at Build stage with Leadership Training complete</p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full transition-colors">
               <span className="material-symbols-outlined">close</span>
@@ -661,12 +668,25 @@ function AssignMentorModal({ currentMember, members, stages, onClose, onAssign }
   );
 }
 
-function Profile({ member, members, stages, setMembers, setPage, toast }) {
-  const { user }                          = useAuth();
-  const [m, setM]                         = useState(member);
+function MemberDetail({ members, stages, setMembers, toast }) {
+  const { user }    = useAuth();
+  const navigate    = useNavigate();
+  const { id }      = { id: window.location.pathname.split('/').pop() };
+  const memberId    = parseInt(id);
+  const found       = members.find(m => m.id === memberId);
+  const [m, setM]   = useState(found);
+
   const [showAssignMentor, setShowAssignMentor] = useState(false);
-  const [overrideDraft, setOverrideDraft] = useState(false);
-  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideDraft, setOverrideDraft]       = useState(false);
+  const [overrideReason, setOverrideReason]     = useState('');
+
+  if (!m) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-8 fade-in">
+      <span className="material-symbols-outlined text-5xl mb-4 block text-outline-variant">person_off</span>
+      <p className="font-semibold text-on-surface-variant">Member not found</p>
+      <button onClick={() => navigate('/members')} className="mt-4 text-sm font-semibold text-primary hover:underline">Back to Members</button>
+    </div>
+  );
 
   const currentStageIdx = m.currentStageIndex ?? 0;
   const currentStage    = stages[currentStageIdx];
@@ -702,7 +722,7 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
   };
 
   const handleApplyOverride = () => {
-    if (!overrideReason.trim()) { toast('Please enter a reason for the override'); return; }
+    if (!overrideReason.trim()) { toast('Please enter a reason'); return; }
     sync(applyOverride(m, user?.name ?? 'Admin', overrideReason.trim()));
     toast('Admin override enabled');
   };
@@ -719,21 +739,19 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
   };
 
   const faithMap = {
-    born_again: { label: 'Born Again', cls: 'bg-green-100 text-green-700' },
+    born_again:     { label: 'Born Again',     cls: 'bg-green-100 text-green-700' },
     not_born_again: { label: 'Not Born Again', cls: 'bg-surface-container-high text-on-surface-variant' },
-    visitor: { label: 'Visitor', cls: 'bg-tertiary-container text-on-tertiary-container' },
+    visitor:        { label: 'Visitor',        cls: 'bg-tertiary-container text-on-tertiary-container' },
   };
 
   return (
     <div className="fade-in">
-      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8">
-        <div className="flex items-center gap-4">
-          <span className="text-lg font-bold text-slate-800 font-headline">Member Profile</span>
-          <button onClick={() => setPage('members')}
-            className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary transition-colors">
-            <span className="material-symbols-outlined text-sm">arrow_back</span>Back to Members
-          </button>
-        </div>
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center gap-4 px-8">
+        <button onClick={() => navigate('/members')}
+          className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary transition-colors">
+          <span className="material-symbols-outlined text-sm">arrow_back</span>Members
+        </button>
+        <span className="text-lg font-bold text-slate-800 font-headline">{m.name}</span>
       </div>
 
       <div className="p-8 max-w-5xl mx-auto space-y-10">
@@ -824,7 +842,6 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
                 );
               })}
             </div>
-
             {!isLastStage && (
               <div className="mt-8 pt-8 border-t border-surface-container space-y-3">
                 {!canMove && !overrideActive && (
@@ -850,7 +867,6 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
 
           {/* Sidebar panels */}
           <div className="space-y-6">
-            {/* Admin override */}
             {!isLastStage && hasPermission(user, 'approve', m) && (user?.role === 'pastor' || user?.role === 'admin') && (
               <div className={`rounded-xl p-6 border ${overrideActive ? 'bg-amber-50 border-amber-200' : 'bg-surface-container-lowest border-primary/5 shadow-sm'}`}>
                 <div className="flex items-center justify-between mb-4">
@@ -887,7 +903,6 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
               </div>
             )}
 
-            {/* Mentor */}
             <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-primary/5">
               <div className="flex items-center justify-between mb-4">
                 <h5 className="font-headline font-bold text-sm">Assigned Mentor</h5>
@@ -926,8 +941,8 @@ function Profile({ member, members, stages, setMembers, setPage, toast }) {
 // =============================================================================
 
 function EligibilityModal({ member, result, onClose, onOverride }) {
-  const [showOverride,    setShowOverride]    = useState(false);
-  const [overrideReason,  setOverrideReason]  = useState('');
+  const [showOverride, setShowOverride]   = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const isBlock = result.type === 'block';
 
   return (
@@ -986,8 +1001,9 @@ function EligibilityModal({ member, result, onClose, onOverride }) {
   );
 }
 
-function Groups({ groups, setGroups, members, stages, rules, setPage, setSelectedMember, toast }) {
+function Groups({ groups, setGroups, members, stages, rules, toast }) {
   const { user }                          = useAuth();
+  const navigate                          = useNavigate();
   const [search, setSearch]               = useState('');
   const [activeGroup, setActiveGroup]     = useState(null);
   const [showNewGroup, setShowNewGroup]   = useState(false);
@@ -995,6 +1011,8 @@ function Groups({ groups, setGroups, members, stages, rules, setPage, setSelecte
   const [showAddMember, setShowAddMember] = useState(false);
   const [pendingMember, setPendingMember] = useState(null);
   const [eligResult, setEligResult]       = useState(null);
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [editForm, setEditForm]         = useState({});
 
   const scopedGroups  = (user?.role === 'leader' && user.groupId) ? groups.filter(g => g.id === user.groupId) : groups;
   const filtered      = scopedGroups.filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase()));
@@ -1025,20 +1043,33 @@ function Groups({ groups, setGroups, members, stages, rules, setPage, setSelecte
     if (reason) toast(`Override logged: ${reason}`);
     confirmAddMember(pendingMember, activeGroup);
   };
+  const handleEditGroup = (g) => {
+  setEditingGroup(g);
+  setEditForm({ name: g.name, description: g.description, schedule: g.schedule, leader: g.leader });
+};
 
-  // Group detail view
+const handleSaveEdit = () => {
+  setGroups(prev => prev.map(g => g.id === editingGroup.id ? { ...g, ...editForm } : g));
+  setEditingGroup(null);
+  toast('Group updated');
+};
+
+const handleDeleteGroup = (g) => {
+  if (!window.confirm(`Delete "${g.name}"? This cannot be undone.`)) return;
+  setGroups(prev => prev.filter(gr => gr.id !== g.id));
+  toast('Group deleted');
+};
+
   if (activeGroup) {
     const gMembers = getGroupMembers(activeGroup);
     return (
       <>
         <div className="fade-in">
-          <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8">
-            <div className="flex items-center gap-4">
-              <span className="text-lg font-bold text-slate-800 font-headline">{activeGroup.name}</span>
-              <button onClick={() => setActiveGroup(null)} className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary transition-colors">
-                <span className="material-symbols-outlined text-sm">arrow_back</span>All Groups
-              </button>
-            </div>
+          <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center gap-4 px-8">
+            <button onClick={() => setActiveGroup(null)} className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-primary transition-colors">
+              <span className="material-symbols-outlined text-sm">arrow_back</span>All Groups
+            </button>
+            <span className="text-lg font-bold text-slate-800 font-headline">{activeGroup.name}</span>
           </div>
           <div className="p-8 max-w-5xl mx-auto space-y-8">
             <div className="bg-surface-container-lowest rounded-2xl p-8 flex items-center gap-6">
@@ -1072,7 +1103,7 @@ function Groups({ groups, setGroups, members, stages, rules, setPage, setSelecte
                 <div className="space-y-4">
                   {gMembers.map(m => (
                     <div key={m.id} className="flex items-center justify-between p-4 bg-surface rounded-xl hover:bg-surface-container-low transition-colors cursor-pointer"
-                      onClick={() => { setSelectedMember(m); setPage('profile'); }}>
+                      onClick={() => navigate(`/members/${m.id}`)}>
                       <div className="flex items-center gap-4">
                         <SmAvatar member={m} />
                         <div>
@@ -1207,13 +1238,69 @@ function Groups({ groups, setGroups, members, stages, rules, setPage, setSelecte
                     <span className="text-xs text-slate-500 font-medium">{gMembers.length} Members</span>
                   </div>
                 </div>
-                <div className="mt-auto">
-                  <button className="w-full bg-surface-container-low text-on-surface py-2.5 rounded-md text-xs font-bold transition-all hover:bg-surface-container-high">View Details</button>
-                </div>
+                <div className="mt-auto flex gap-2" onClick={e => e.stopPropagation()}>
+  <button onClick={() => setActiveGroup(g)}
+    className="flex-1 bg-surface-container-low text-on-surface py-2.5 rounded-md text-xs font-bold transition-all hover:bg-surface-container-high">
+    View Details
+  </button>
+  <button onClick={() => handleEditGroup(g)}
+    className="p-2.5 bg-surface-container-low text-on-surface-variant rounded-md hover:bg-primary-container hover:text-primary transition-all">
+    <span className="material-symbols-outlined text-sm">edit</span>
+  </button>
+  <button onClick={() => handleDeleteGroup(g)}
+    className="p-2.5 bg-surface-container-low text-on-surface-variant rounded-md hover:bg-error-container/30 hover:text-error transition-all">
+    <span className="material-symbols-outlined text-sm">delete</span>
+  </button>
+</div>
               </div>
             );
           })}
         </div>
+
+        {/* Edit Group Modal */}
+        {editingGroup && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingGroup(null)}>
+            <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md mx-4 slide-in overflow-hidden">
+              <div className="p-7 pb-5 border-b border-surface-container flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Edit Group</p>
+                  <h3 className="text-xl font-bold font-headline">{editingGroup.name}</h3>
+                </div>
+                <button onClick={() => setEditingGroup(null)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div className="p-7 space-y-4">
+                {[
+                  { label: 'Group Name',   key: 'name',        type: 'text' },
+                  { label: 'Description',  key: 'description', type: 'text' },
+                  { label: 'Schedule',     key: 'schedule',    type: 'text' },
+                  { label: 'Leader Name',  key: 'leader',      type: 'text' },
+                ].map(fi => (
+                  <div key={fi.key}>
+                    <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-1.5 block">{fi.label}</label>
+                    <input
+                      type={fi.type}
+                      value={editForm[fi.key] ?? ''}
+                      onChange={e => setEditForm(p => ({ ...p, [fi.key]: e.target.value }))}
+                      className="w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="p-6 border-t border-surface-container flex gap-3 justify-end">
+                <button onClick={() => setEditingGroup(null)}
+                  className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleSaveEdit}
+                  className="px-6 py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors flex items-center gap-2">
+                  <span className="material-symbols-outlined text-sm">save</span>Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1229,7 +1316,6 @@ function RuleCard({ rule, stages, groups, onDelete }) {
     warn:  { bg: 'bg-amber-100', text: 'text-amber-700', icon: 'warning', label: 'WARN' },
     allow: { bg: 'bg-green-100', text: 'text-green-700', icon: 'check_circle', label: 'ALLOW' },
   }[rule.action.type] || { bg: 'bg-error-container/30', text: 'text-error', icon: 'block', label: 'BLOCK' };
-
   const targetName = rule.targetId === 'leadership' ? 'All Leadership' : groups.find(g => g.id === rule.targetId)?.name ?? `Target #${rule.targetId}`;
 
   return (
@@ -1465,12 +1551,12 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
             </button>
           </div>
           <div className="flex gap-1 p-1 bg-surface-container-low rounded-xl">
-            {[{ id: 'all', label: 'All Rules', icon: 'rule' }, { id: 'team', label: 'Serving', icon: 'music_note' }, { id: 'leadership', label: 'Leadership', icon: 'verified' }, { id: 'group', label: 'Groups', icon: 'diversity_3' }].map(f => (
-              <button key={f.id} onClick={() => setRuleFilter(f.id)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${ruleFilter === f.id ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
-                <span className="material-symbols-outlined text-sm">{f.icon}</span>
-                <span className="hidden sm:inline">{f.label}</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-surface-container text-outline ml-1">{f.id === 'all' ? rules.length : rules.filter(r => r.appliesTo === f.id).length}</span>
+            {[{ id: 'all', label: 'All Rules', icon: 'rule' }, { id: 'team', label: 'Serving', icon: 'music_note' }, { id: 'leadership', label: 'Leadership', icon: 'verified' }, { id: 'group', label: 'Groups', icon: 'diversity_3' }].map(fi => (
+              <button key={fi.id} onClick={() => setRuleFilter(fi.id)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-semibold transition-all ${ruleFilter === fi.id ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                <span className="material-symbols-outlined text-sm">{fi.icon}</span>
+                <span className="hidden sm:inline">{fi.label}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-surface-container text-outline ml-1">{fi.id === 'all' ? rules.length : rules.filter(r => r.appliesTo === fi.id).length}</span>
               </button>
             ))}
           </div>
@@ -1594,31 +1680,30 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
 // =============================================================================
 
 function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) {
-  const { user }                              = useAuth();
-  const member                                = members.find(m => m.id === user?.memberId) ?? null;
-  const [activePage, setActivePage]           = useState('journey');
-  const [editing, setEditing]                 = useState(false);
-  const [draft, setDraft]                     = useState({});
-  const [message, setMessage]                 = useState('');
-  const [msgSent, setMsgSent]                 = useState(false);
-  const [structureOpen, setStructureOpen]     = useState(false);
+  const { user }                          = useAuth();
+  const member                            = members.find(m => m.id === user?.memberId) ?? null;
+  const [activePage, setActivePage]       = useState('journey');
+  const [editing, setEditing]             = useState(false);
+  const [draft, setDraft]                 = useState({});
+  const [message, setMessage]             = useState('');
+  const [msgSent, setMsgSent]             = useState(false);
+  const [structureOpen, setStructureOpen] = useState(false);
 
   const fd = (k, v) => setDraft(p => ({ ...p, [k]: v }));
-
   const openEdit = () => { if (!member) return; setDraft({ phone: member.phone ?? '', email: member.email ?? '', homeAddress: member.homeAddress ?? '' }); setEditing(true); };
   const saveEdit = () => { if (!member) return; const u = { ...member, ...draft }; setMembers(prev => prev.map(m => m.id === u.id ? u : m)); setEditing(false); toast('✓ Profile updated'); };
   const sendMessage = () => { if (!message.trim()) return; setMessage(''); setMsgSent(true); toast('✓ Message sent to your administrator'); setTimeout(() => setMsgSent(false), 4000); };
 
-  const cc  = 'bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden';
-  const hc  = 'px-8 py-5 border-b border-surface-container';
-  const bc  = 'px-8 py-6';
-  const lc  = 'text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-1 block';
-  const ic  = 'w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-primary/20';
+  const cc = 'bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden';
+  const hc = 'px-8 py-5 border-b border-surface-container';
+  const bc = 'px-8 py-6';
+  const lc = 'text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-1 block';
+  const ic = 'w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-primary/20';
 
   const stageKey = member?.enrollmentStage ?? 'new_applicant';
   const SI = {
-    new_applicant:   { label: 'New Applicant', msg: "You're on the list. Your pastor will review and approve your application soon.", icon: 'schedule',     color: 'text-amber-600', pill: 'bg-amber-100 text-amber-700',                        bg: 'bg-gradient-to-br from-amber-50 to-surface-container-lowest',              border: 'border-amber-200'   },
-    approved:        { label: 'Approved',       msg: "You're in. Reach out to your group leader to begin your Blueprint journey.",    icon: 'verified',     color: 'text-primary',   pill: 'bg-primary-container text-on-primary-container',      bg: 'bg-gradient-to-br from-primary-container/20 to-surface-container-lowest', border: 'border-primary/20'  },
+    new_applicant:   { label: 'New Applicant', msg: "You're on the list. Your pastor will review and approve your application soon.", icon: 'schedule',     color: 'text-amber-600', pill: 'bg-amber-100 text-amber-700',                       bg: 'bg-gradient-to-br from-amber-50 to-surface-container-lowest',              border: 'border-amber-200'   },
+    approved:        { label: 'Approved',       msg: "You're in. Reach out to your group leader to begin your Blueprint journey.",    icon: 'verified',     color: 'text-primary',   pill: 'bg-primary-container text-on-primary-container',     bg: 'bg-gradient-to-br from-primary-container/20 to-surface-container-lowest', border: 'border-primary/20'  },
     in_discipleship: { label: 'In Blueprint',   msg: "You're on the journey. Keep engaging with your group and completing tasks.",    icon: 'auto_awesome', color: 'text-green-600', pill: 'bg-green-100 text-green-700',                        bg: 'bg-gradient-to-br from-green-50 to-surface-container-lowest',            border: 'border-green-200'   },
   };
   const si = SI[stageKey] ?? SI.new_applicant;
@@ -1640,7 +1725,7 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
             <span className="material-symbols-outlined text-outline text-3xl">person_off</span>
           </div>
           <h2 className="text-xl font-extrabold font-headline text-on-surface mb-2">Profile Not Found</h2>
-          <p className="text-on-surface-variant text-sm max-w-xs mb-6">Your account is not linked to a member record yet. Please contact your administrator.</p>
+          <p className="text-on-surface-variant text-sm max-w-xs mb-6">Your account is not linked to a member record yet.</p>
           <button onClick={onLogout} className="text-sm font-semibold text-primary hover:underline">Sign Out</button>
         </div>
       </div>
@@ -1690,8 +1775,6 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
 
       <div className="ml-64 flex-1 min-h-screen">
         <div className="p-8 max-w-xl">
-
-          {/* ── Journey ── */}
           {activePage === 'journey' && (
             <div className="space-y-5 fade-in">
               <div>
@@ -1756,7 +1839,6 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
             </div>
           )}
 
-          {/* ── My Info ── */}
           {activePage === 'info' && (
             <div className="space-y-5 fade-in">
               <div>
@@ -1774,11 +1856,11 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
                 </div>
                 {editing ? (
                   <div className={`${bc} space-y-4`}>
-                    <p className="text-xs text-on-surface-variant bg-surface-container-low rounded-lg px-3 py-2">You can update your contact details. Other fields are managed by your church administrator.</p>
-                    {[{ label: 'Phone', key: 'phone', type: 'tel' }, { label: 'Email', key: 'email', type: 'email' }, { label: 'Home Address', key: 'homeAddress', type: 'text' }].map(f => (
-                      <div key={f.key}>
-                        <label className={lc}>{f.label}</label>
-                        <input type={f.type} value={draft[f.key] ?? ''} onChange={e => fd(f.key, e.target.value)} className={ic} />
+                    <p className="text-xs text-on-surface-variant bg-surface-container-low rounded-lg px-3 py-2">You can update your contact details only.</p>
+                    {[{ label: 'Phone', key: 'phone', type: 'tel' }, { label: 'Email', key: 'email', type: 'email' }, { label: 'Home Address', key: 'homeAddress', type: 'text' }].map(fi => (
+                      <div key={fi.key}>
+                        <label className={lc}>{fi.label}</label>
+                        <input type={fi.type} value={draft[fi.key] ?? ''} onChange={e => fd(fi.key, e.target.value)} className={ic} />
                       </div>
                     ))}
                     <div className="flex gap-3 pt-1">
@@ -1796,10 +1878,10 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
                         { label: 'Email',        value: member.email                   },
                         { label: 'Marital',      value: member.maritalStatus           },
                         { label: 'Address',      value: member.homeAddress, span: true },
-                      ].filter(f => f?.value).map(f => (
-                        <div key={f.label} className={f.span ? 'col-span-2' : ''}>
-                          <p className={lc}>{f.label}</p>
-                          <p className="text-sm text-on-surface font-medium">{f.value || '—'}</p>
+                      ].filter(fi => fi?.value).map(fi => (
+                        <div key={fi.label} className={fi.span ? 'col-span-2' : ''}>
+                          <p className={lc}>{fi.label}</p>
+                          <p className="text-sm text-on-surface font-medium">{fi.value || '—'}</p>
                         </div>
                       ))}
                     </div>
@@ -1809,7 +1891,6 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
             </div>
           )}
 
-          {/* ── Contact ── */}
           {activePage === 'contact' && (
             <div className="space-y-5 fade-in">
               <div>
@@ -1836,7 +1917,6 @@ function MemberPortal({ members, stages, setMembers, groups, toast, onLogout }) 
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
@@ -1859,25 +1939,32 @@ function Unauthorized() {
 }
 
 // =============================================================================
+// ROLE GUARD
+// =============================================================================
+
+function RoleGuard({ roles, children }) {
+  const { user } = useAuth();
+  if (!user || !roles.includes(user.role)) return <Unauthorized />;
+  return children;
+}
+
+// =============================================================================
 // APP ROOT
 // =============================================================================
 
 export default function App() {
-  const [page, setPage]                     = useState('dashboard');
   const [members, setMembers]               = useState(seedMembers);
   const [groups, setGroups]                 = useState(seedGroups);
   const [stages, setStages]                 = useState(seedStages);
   const [rules, setRules]                   = useState(seedRules);
   const [users, setUsers]                   = useState(seedUsers);
-  const [selectedMember, setSelectedMember] = useState(null);
   const [toastMsg, setToastMsg]             = useState(null);
   const [showEnrolModal, setShowEnrolModal] = useState(false);
   const [user, setUser]                     = useState(null);
 
-  const login    = (u)   => { setUser(u); setPage(u.role === 'member' ? 'portal' : 'dashboard'); };
-  const logout   = ()    => { setUser(null); setPage('dashboard'); setSelectedMember(null); };
-  const toast    = (msg) => setToastMsg(msg);
-  const navigate = (p)   => { setPage(p); window.scrollTo(0, 0); };
+  const toast  = (msg) => setToastMsg(msg);
+  const login  = (u)   => setUser(u);
+  const logout = ()    => setUser(null);
 
   const handleEnrol = (data) => {
     const nm = { ...data, id: Date.now() };
@@ -1893,33 +1980,6 @@ export default function App() {
     setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
     setUser(updated);
     toast('Password set. Welcome!');
-  };
-
-  // ── Sidebar nav items (ALL pages) ────────────────────────────────────────
-  const NAV = [
-    { id: 'dashboard',  label: 'Dashboard',  icon: 'dashboard',                roles: ['pastor', 'admin', 'leader'] },
-    { id: 'members',    label: 'Members',    icon: 'group',                    roles: ['pastor', 'admin', 'leader'] },
-    { id: 'groups',     label: 'Groups',     icon: 'diversity_3',              roles: ['pastor', 'admin', 'leader'] },
-    { id: 'attendance', label: 'Attendance', icon: 'fact_check',               roles: ['pastor', 'admin', 'leader'] },
-    { id: 'events',     label: 'Events',     icon: 'event',                    roles: ['pastor', 'admin', 'leader'] },
-    { id: 'messages',   label: 'Messages',   icon: 'forum',                    roles: ['pastor', 'admin']           },
-    { id: 'engine',     label: 'Blueprint',  icon: 'settings_input_component', roles: ['pastor', 'admin']           },
-    { id: 'settings',   label: 'Settings',   icon: 'settings',                 roles: ['pastor', 'admin']           },
-  ];
-
-  const renderPage = () => {
-    switch (page) {
-      case 'dashboard':  return <Dashboard  members={members} groups={groups} stages={stages} setPage={navigate} setSelectedMember={setSelectedMember} onAddMember={hasPermission(user, 'enrol') ? () => setShowEnrolModal(true) : null} />;
-      case 'members':    return <Members    members={members} groups={groups} stages={stages} setMembers={setMembers} setPage={navigate} setSelectedMember={setSelectedMember} toast={toast} />;
-      case 'profile':    return selectedMember ? <Profile member={selectedMember} members={members} stages={stages} setMembers={setMembers} setPage={navigate} toast={toast} /> : <Members members={members} groups={groups} stages={stages} setMembers={setMembers} setPage={navigate} setSelectedMember={setSelectedMember} toast={toast} />;
-      case 'groups':     return <Groups     groups={groups} setGroups={setGroups} members={members} stages={stages} rules={rules} setPage={navigate} setSelectedMember={setSelectedMember} toast={toast} />;
-      case 'attendance': return <Attendance members={members} groups={groups} />;
-      case 'events':     return <Events />;
-      case 'messages':   return hasPermission(user, 'settings') ? <Messages groups={groups} /> : <Unauthorized />;
-      case 'engine':     return hasPermission(user, 'engine')   ? <Engine   stages={stages} setStages={setStages} rules={rules} setRules={setRules} groups={groups} toast={toast} /> : <Unauthorized />;
-      case 'settings':   return hasPermission(user, 'settings') ? <Settings toast={toast} /> : <Unauthorized />;
-      default:           return <Dashboard  members={members} groups={groups} stages={stages} setPage={navigate} setSelectedMember={setSelectedMember} onAddMember={null} />;
-    }
   };
 
   // ── Auth gates ────────────────────────────────────────────────────────────
@@ -1948,6 +2008,7 @@ export default function App() {
     );
   }
 
+  // ── Member portal ─────────────────────────────────────────────────────────
   if (user.role === 'member') {
     return (
       <AuthContext.Provider value={{ user, login, logout }}>
@@ -1957,54 +2018,59 @@ export default function App() {
     );
   }
 
-  // ── Full app shell ────────────────────────────────────────────────────────
-  const nav  = NAV.filter(n => n.roles.includes(user.role));
-  const meta = ROLE_META[user.role] ?? ROLE_META.member;
-
+  // ── Full app shell with React Router ─────────────────────────────────────
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <div className="flex min-h-screen">
-        <aside className="h-screen w-64 fixed left-0 top-0 bg-slate-50 flex flex-col p-4 gap-1 border-r border-slate-100 z-40">
-          <div className="flex items-center gap-3 px-2 py-4 mb-2">
-            <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-on-primary">
-              <span className="material-symbols-outlined ms-filled text-lg">church</span>
-            </div>
-            <div>
-              <h2 className="text-base font-extrabold text-slate-900 tracking-tight font-headline">ChurchOS</h2>
-              <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Sanctuary Management</p>
-            </div>
-          </div>
-          <nav className="flex-1 flex flex-col gap-1 overflow-y-auto">
-            {nav.map(n => (
-              <button key={n.id} onClick={() => navigate(n.id)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all w-full text-left ${page === n.id ? 'nav-active' : 'text-slate-500 hover:bg-slate-100'}`}>
-                <span className={`material-symbols-outlined ${page === n.id ? 'ms-filled' : ''}`}>{n.icon}</span>
-                <span>{n.label}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="border-t border-slate-100 pt-3 mt-2">
-            <div className="px-3 py-2.5 rounded-xl bg-surface-container mb-1">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px] font-bold flex-shrink-0">{user.initials}</div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-on-surface truncate">{user.name}</p>
-                  <p className="text-[10px] text-on-surface-variant truncate">{user.email}</p>
-                </div>
-              </div>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${meta.color}`}>
-                <span className="material-symbols-outlined text-xs">{meta.icon}</span>{meta.label}
-              </span>
-            </div>
-            <button onClick={logout}
-              className="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:bg-error-container/20 hover:text-error rounded-xl transition-all text-sm w-full text-left">
-              <span className="material-symbols-outlined">logout</span><span>Sign Out</span>
-            </button>
-          </div>
-        </aside>
-
+        <Sidebar user={user} onLogout={logout} />
         <div className="ml-64 flex-1 min-h-screen flex flex-col">
-          {renderPage()}
+          <Routes>
+            <Route path="/" element={
+              <Dashboard
+                members={members} groups={groups} stages={stages}
+                setSelectedMember={() => {}}
+                onAddMember={hasPermission(user, 'enrol') ? () => setShowEnrolModal(true) : null}
+              />
+            } />
+            <Route path="/members" element={
+              <RoleGuard roles={['pastor', 'admin', 'leader']}>
+                <Members members={members} groups={groups} stages={stages} setMembers={setMembers} toast={toast} />
+              </RoleGuard>
+            } />
+            <Route path="/members/:id" element={
+              <RoleGuard roles={['pastor', 'admin', 'leader']}>
+                <MemberDetail members={members} stages={stages} setMembers={setMembers} toast={toast} />
+              </RoleGuard>
+            } />
+            <Route path="/groups" element={
+              <RoleGuard roles={['pastor', 'admin', 'leader']}>
+                <Groups groups={groups} setGroups={setGroups} members={members} stages={stages} rules={rules} toast={toast} />
+              </RoleGuard>
+            } />
+            <Route path="/attendance" element={
+              <RoleGuard roles={['pastor', 'admin', 'leader']}>
+                <Attendance members={members} groups={groups} />
+              </RoleGuard>
+            } />
+            <Route path="/events"   element={<Events />} />
+            <Route path="/messages" element={
+              <RoleGuard roles={['pastor', 'admin']}>
+                <Messages groups={groups} />
+              </RoleGuard>
+            } />
+            <Route path="/engine" element={
+              <RoleGuard roles={['pastor', 'admin']}>
+                <Engine stages={stages} setStages={setStages} rules={rules} setRules={setRules} groups={groups} toast={toast} />
+              </RoleGuard>
+            } />
+            <Route path="/settings" element={
+              <RoleGuard roles={['pastor', 'admin']}>
+                <Settings toast={toast} />
+              </RoleGuard>
+            } />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+
           <footer className="py-6 border-t border-slate-100 bg-slate-50 mt-auto">
             <div className="flex justify-between items-center px-8 max-w-7xl mx-auto">
               <p className="text-slate-400 text-xs">© 2025 ChurchOS. Sanctuary Minimalism.</p>
