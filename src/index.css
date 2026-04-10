@@ -4,6 +4,59 @@
 
 /* ── ChurchOS custom styles (migrated from original app) ───────────────────── */
 
+:root {
+  --c-primary:                  81 95 116;
+  --c-primary-dim:              69 83 104;
+  --c-primary-container:        213 227 253;
+  --c-on-primary:               246 247 255;
+  --c-on-primary-container:     69 83 103;
+
+  --c-secondary:                80 96 118;
+  --c-secondary-dim:            68 84 106;
+  --c-secondary-container:      211 228 254;
+  --c-on-secondary-container:   67 83 104;
+
+  --c-tertiary:                 82 96 115;
+  --c-tertiary-dim:             70 84 103;
+  --c-tertiary-container:       207 222 245;
+  --c-on-tertiary-container:    65 79 98;
+
+  --c-surface:                  249 249 251;
+  --c-on-surface:               45 51 56;
+  --c-on-surface-variant:       89 96 101;
+  --c-surface-variant:          221 227 233;
+  --c-surface-container-lowest: 255 255 255;
+  --c-surface-container-low:    242 244 246;
+  --c-surface-container:        235 238 242;
+  --c-surface-container-high:   228 233 238;
+  --c-surface-container-highest:221 227 233;
+
+  --c-outline:                  117 124 129;
+  --c-outline-variant:          172 179 184;
+
+  --c-error:                    159 64 61;
+  --c-error-container:          254 137 131;
+  --c-on-error:                 255 247 246;
+  --c-on-error-container:       117 33 33;
+
+  --font-headline: "Manrope", sans-serif;
+  --font-body:     "Inter", sans-serif;
+}
+
+.dark {
+  --c-surface:                  18 19 24;
+  --c-on-surface:               226 226 229;
+  --c-on-surface-variant:       196 198 208;
+  --c-surface-container-lowest: 12 13 18;
+  --c-surface-container-low:    26 27 32;
+  --c-surface-container:        30 31 36;
+  --c-surface-container-high:   40 41 47;
+  --c-surface-container-highest:50 51 57;
+  --c-surface-variant:          68 71 78;
+  --c-outline:                  147 149 160;
+  --c-outline-variant:          68 71 78;
+}
+
 body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;

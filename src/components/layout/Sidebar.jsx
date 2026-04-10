@@ -1,33 +1,41 @@
 import { NavLink } from 'react-router-dom';
 import { ROLE_META } from '../../lib/auth';
+import { useBranding } from '../../lib/branding.jsx';
 
 const allNav = [
-  { to: '/',           icon: 'dashboard',                label: 'Dashboard',  roles: ['pastor','admin','leader'] },
-  { to: '/members',    icon: 'group',                    label: 'Members',    roles: ['pastor','admin','leader'] },
-  { to: '/groups',     icon: 'diversity_3',              label: 'Groups',     roles: ['pastor','admin','leader'] },
-  { to: '/attendance', icon: 'fact_check',               label: 'Attendance', roles: ['pastor','admin','leader'] },
-  { to: '/events',     icon: 'event',                    label: 'Events',     roles: ['pastor','admin','leader'] },
-  { to: '/messages',   icon: 'forum',                    label: 'Messages',   roles: ['pastor','admin']          },
-  { to: '/engine',     icon: 'settings_input_component', label: 'Blueprint',  roles: ['pastor','admin']          },
-  { to: '/settings',   icon: 'settings',                 label: 'Settings',   roles: ['pastor','admin']          },
+  { to: '/',           icon: 'dashboard',                label: 'Dashboard',  roles: ['pastor', 'admin', 'leader'] },
+  { to: '/members',    icon: 'group',                    label: 'Members',    roles: ['pastor', 'admin', 'leader'] },
+  { to: '/groups',     icon: 'diversity_3',              label: 'Groups',     roles: ['pastor', 'admin', 'leader'] },
+  { to: '/attendance', icon: 'fact_check',               label: 'Attendance', roles: ['pastor', 'admin', 'leader'] },
+  { to: '/events',     icon: 'event',                    label: 'Events',     roles: ['pastor', 'admin', 'leader'] },
+  { to: '/messages',   icon: 'forum',                    label: 'Messages',   roles: ['pastor', 'admin']           },
+  { to: '/engine',     icon: 'settings_input_component', label: 'Blueprint',  roles: ['pastor', 'admin']           },
+  { to: '/settings',   icon: 'settings',                 label: 'Settings',   roles: ['pastor', 'admin']           },
 ];
 
 export function Sidebar({ user, onLogout }) {
+  const { branding } = useBranding();
   const nav  = allNav.filter(n => !user || n.roles.includes(user.role));
   const meta = ROLE_META[user?.role] ?? ROLE_META.member;
 
   return (
     <aside className="h-screen w-64 fixed left-0 top-0 bg-slate-50 flex flex-col p-4 gap-1 border-r border-slate-100 z-40">
+
+      {/* Logo block — reads from branding context */}
       <div className="flex items-center gap-3 px-2 py-4 mb-2">
-        <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-on-primary">
-          <span className="material-symbols-outlined ms-filled text-lg">church</span>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-on-primary flex-shrink-0"
+          style={{ background: `rgb(var(--c-primary))` }}>
+          {branding.logoType === 'icon'
+            ? <span className="material-symbols-outlined ms-filled text-lg">{branding.logoIcon}</span>
+            : <span className="font-black text-sm">{branding.orgName.slice(0, 2).toUpperCase()}</span>}
         </div>
-        <div>
-          <h2 className="text-base font-extrabold text-slate-900 tracking-tight font-headline">ChurchOS</h2>
-          <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Sanctuary Management</p>
+        <div className="min-w-0">
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight font-headline truncate">{branding.orgName}</h2>
+          <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold truncate">{branding.tagline}</p>
         </div>
       </div>
 
+      {/* Navigation */}
       <nav className="flex-1 flex flex-col gap-1 overflow-y-auto">
         {nav.map(n => (
           <NavLink
@@ -50,11 +58,15 @@ export function Sidebar({ user, onLogout }) {
         ))}
       </nav>
 
+      {/* User card */}
       {user && (
         <div className="border-t border-slate-100 pt-3 mt-2">
           <div className="px-3 py-2.5 rounded-xl bg-surface-container mb-1">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px] font-bold flex-shrink-0">{user.initials}</div>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-on-primary text-[10px] font-bold flex-shrink-0"
+                style={{ background: `rgb(var(--c-primary))` }}>
+                {user.initials}
+              </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-on-surface truncate">{user.name}</p>
                 <p className="text-[10px] text-on-surface-variant truncate">{user.email}</p>
