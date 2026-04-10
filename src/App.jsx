@@ -312,9 +312,11 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
     const spouseId   = form.maritalStatus === 'married' ? (form.spouseId || null) : null;
     const spouseName = form.maritalStatus === 'married' ? (form.spouseName.trim() || null) : null;
     onSave(createMemberDefaults({
-      name: fullName, initials,
-      avatarColor: colors[Math.floor(Math.random() * colors.length)],
-      joinDate: new Date().toISOString().split('T')[0],
+  name: fullName,
+  initials,
+  avatarColor: colors[Math.floor(Math.random() * colors.length)],
+  joinDate: new Date().toISOString().split('T')[0],
+  currentStageIndex: 0,
       email: form.email.trim(), phone: form.phone.trim(),
       gender: form.gender, maritalStatus: form.maritalStatus,
       spouseId, spouseName,
@@ -1507,18 +1509,89 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
   const [saved, setSaved]               = useState(false);
   const [showCreate, setShowCreate]     = useState(false);
   const [ruleFilter, setRuleFilter]     = useState('all');
+  const [editingStageId, setEditingStageId] = useState(null);
+  const [stageTitleDraft, setStageTitleDraft] = useState('');
+
+  // ── Drag state ────────────────────────────────────────────────────────────
+  const [dragStage, setDragStage]       = useState(null); // stage id being dragged
+  const [dragTask, setDragTask]         = useState(null); // {stageId, taskIdx}
+  const [dragOverStage, setDragOverStage] = useState(null);
+  const [dragOverTask, setDragOverTask]   = useState(null);
 
   const colorMap     = { primary: '#d5e3fd', secondary: '#d3e4fe', tertiary: '#cfdef5' };
   const textColorMap = { primary: '#515f74', secondary: '#506076', tertiary: '#526073' };
 
+  // ── Stage actions ─────────────────────────────────────────────────────────
   const toggleStage    = (id) => setStages(prev => prev.map(s => s.id === id ? { ...s, active: !s.active } : s));
   const toggleRequires = (id) => setStages(prev => prev.map(s => s.id === id ? { ...s, requiresPrevious: !s.requiresPrevious } : s));
-  const deleteStage    = (id) => { if (stages.length <= 1) { toast('Cannot delete the only stage'); return; } setStages(prev => prev.filter(s => s.id !== id)); toast('Stage removed'); };
-  const removeTask     = (stageId, idx) => setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: s.requirements.filter((_, i) => i !== idx) } : s));
-  const addTask        = (stageId) => { const d = newTaskDraft[stageId]?.trim(); if (!d) return; setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: [...s.requirements, d] } : s)); setNewTaskDraft(prev => ({ ...prev, [stageId]: '' })); };
-  const updateTask     = (stageId, idx, val) => setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: s.requirements.map((r, i) => i === idx ? val : r) } : s));
-  const saveEngine     = () => { setSaved(true); toast('Blueprint saved'); setTimeout(() => setSaved(false), 2000); };
-  const addStage       = () => { const icons = ['star', 'explore', 'bolt', 'emoji_events']; setStages(prev => [...prev, { id: Date.now(), name: `Stage ${prev.length + 1}`, icon: icons[prev.length % 4], color: 'primary', description: 'New growth stage', active: true, requiresPrevious: true, requirements: [] }]); };
+  const deleteStage    = (id) => {
+    if (stages.length <= 1) { toast('Cannot delete the only stage'); return; }
+    if (!window.confirm('Delete this stage? This cannot be undone.')) return;
+    setStages(prev => prev.filter(s => s.id !== id));
+    toast('Stage removed');
+  };
+  const saveStageTitle = (id) => {
+    if (!stageTitleDraft.trim()) return;
+    setStages(prev => prev.map(s => s.id === id ? { ...s, name: stageTitleDraft.trim() } : s));
+    setEditingStageId(null);
+    toast('Stage name updated');
+  };
+  const addStage = () => {
+    const icons = ['star', 'explore', 'bolt', 'emoji_events'];
+    setStages(prev => [...prev, { id: Date.now(), name: `Stage ${prev.length + 1}`, icon: icons[prev.length % 4], color: 'primary', description: 'New growth stage', active: true, requiresPrevious: true, requirements: [] }]);
+  };
+
+  // ── Task actions ──────────────────────────────────────────────────────────
+  const removeTask  = (stageId, idx) => setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: s.requirements.filter((_, i) => i !== idx) } : s));
+  const addTask     = (stageId) => {
+    const d = newTaskDraft[stageId]?.trim();
+    if (!d) return;
+    setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: [...s.requirements, d] } : s));
+    setNewTaskDraft(prev => ({ ...prev, [stageId]: '' }));
+  };
+  const updateTask  = (stageId, idx, val) => setStages(prev => prev.map(s => s.id === stageId ? { ...s, requirements: s.requirements.map((r, i) => i === idx ? val : r) } : s));
+  const saveEngine  = () => { setSaved(true); toast('Blueprint saved'); setTimeout(() => setSaved(false), 2000); };
+
+  // ── Stage drag handlers ───────────────────────────────────────────────────
+  const onStageDragStart = (e, id) => {
+    setDragStage(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const onStageDragOver  = (e, id) => { e.preventDefault(); setDragOverStage(id); };
+  const onStageDrop      = (e, targetId) => {
+    e.preventDefault();
+    if (!dragStage || dragStage === targetId) { setDragStage(null); setDragOverStage(null); return; }
+    setStages(prev => {
+      const arr = [...prev];
+      const fromIdx = arr.findIndex(s => s.id === dragStage);
+      const toIdx   = arr.findIndex(s => s.id === targetId);
+      const [item]  = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, item);
+      return arr;
+    });
+    setDragStage(null); setDragOverStage(null);
+    toast('Stage order updated');
+  };
+
+  // ── Task drag handlers ────────────────────────────────────────────────────
+  const onTaskDragStart = (e, stageId, idx) => {
+    setDragTask({ stageId, idx });
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+  };
+  const onTaskDragOver  = (e, stageId, idx) => { e.preventDefault(); e.stopPropagation(); setDragOverTask({ stageId, idx }); };
+  const onTaskDrop      = (e, stageId, toIdx) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!dragTask || dragTask.stageId !== stageId || dragTask.idx === toIdx) { setDragTask(null); setDragOverTask(null); return; }
+    setStages(prev => prev.map(s => {
+      if (s.id !== stageId) return s;
+      const arr = [...s.requirements];
+      const [item] = arr.splice(dragTask.idx, 1);
+      arr.splice(toIdx, 0, item);
+      return { ...s, requirements: arr };
+    }));
+    setDragTask(null); setDragOverTask(null);
+  };
 
   const filteredRules = ruleFilter === 'all' ? rules : rules.filter(r => r.appliesTo === ruleFilter);
 
@@ -1582,28 +1655,73 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
           <div className="mb-10 flex justify-between items-end">
             <div>
               <h2 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface mb-2">Blueprint Builder</h2>
-              <p className="text-on-surface-variant leading-relaxed max-w-lg text-sm">Define the stages of your church's Blueprint journey.</p>
+              <p className="text-on-surface-variant leading-relaxed max-w-lg text-sm">
+                Drag <span className="material-symbols-outlined text-sm align-middle">drag_indicator</span> to reorder stages and tasks. Click a stage name to rename it.
+              </p>
             </div>
-            <button onClick={saveEngine} className={`px-5 py-2.5 font-semibold text-sm rounded-md shadow-sm transition-all ${saved ? 'bg-green-600 text-white' : 'bg-primary text-on-primary hover:bg-primary-dim'}`}>
+            <button onClick={saveEngine}
+              className={`px-5 py-2.5 font-semibold text-sm rounded-md shadow-sm transition-all ${saved ? 'bg-green-600 text-white' : 'bg-primary text-on-primary hover:bg-primary-dim'}`}>
               {saved ? '✓ Saved!' : 'Save Blueprint'}
             </button>
           </div>
+
           <div className="space-y-8">
             {stages.map((stage, idx) => (
-              <div key={stage.id} className="relative">
+              <div
+                key={stage.id}
+                draggable
+                onDragStart={e => onStageDragStart(e, stage.id)}
+                onDragOver={e => onStageDragOver(e, stage.id)}
+                onDrop={e => onStageDrop(e, stage.id)}
+                onDragEnd={() => { setDragStage(null); setDragOverStage(null); }}
+                className={`relative transition-all ${dragOverStage === stage.id && dragStage !== stage.id ? 'scale-[1.02] opacity-80' : ''}`}
+              >
                 {idx < stages.length - 1 && (
                   <div className="absolute left-7 top-[88px] bottom-[-32px] w-0.5 z-0"
                     style={{ background: 'repeating-linear-gradient(to bottom,#acb3b8 0%,#acb3b8 50%,transparent 50%,transparent 100%)', backgroundSize: '1px 10px' }} />
                 )}
-                <div className={`bg-surface-container-lowest rounded-2xl p-6 shadow-sm ring-1 ring-black/[0.03] transition-all hover:shadow-md relative z-10 border-l-4 ${stage.active ? 'border-primary' : 'border-outline-variant/30'}`}>
+                <div className={`bg-surface-container-lowest rounded-2xl p-6 shadow-sm ring-1 ring-black/[0.03] hover:shadow-md relative z-10 border-l-4 transition-all ${stage.active ? 'border-primary' : 'border-outline-variant/30'} ${dragStage === stage.id ? 'opacity-40' : ''}`}>
+
+                  {/* Stage header */}
                   <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      {/* Drag handle for stage */}
+                      <span className="material-symbols-outlined text-outline-variant cursor-grab active:cursor-grabbing select-none">drag_indicator</span>
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: colorMap[stage.color] || colorMap.primary, color: textColorMap[stage.color] || textColorMap.primary }}>
                         <span className="material-symbols-outlined text-2xl">{stage.icon}</span>
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold font-headline text-on-surface">{stage.name}</h3>
+                        {/* Editable stage name */}
+                        {editingStageId === stage.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={stageTitleDraft}
+                              onChange={e => setStageTitleDraft(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') saveStageTitle(stage.id);
+                                if (e.key === 'Escape') setEditingStageId(null);
+                              }}
+                              autoFocus
+                              className="text-lg font-bold border-b-2 border-primary bg-transparent outline-none font-headline text-on-surface w-40"
+                            />
+                            <button onClick={() => saveStageTitle(stage.id)} className="text-primary hover:text-primary-dim">
+                              <span className="material-symbols-outlined text-sm ms-filled">check_circle</span>
+                            </button>
+                            <button onClick={() => setEditingStageId(null)} className="text-outline-variant hover:text-on-surface">
+                              <span className="material-symbols-outlined text-sm">cancel</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 group/title">
+                            <h3 className="text-lg font-bold font-headline text-on-surface">{stage.name}</h3>
+                            <button
+                              onClick={() => { setEditingStageId(stage.id); setStageTitleDraft(stage.name); }}
+                              className="opacity-0 group-hover/title:opacity-100 transition-opacity p-1 hover:bg-surface-container rounded-lg">
+                              <span className="material-symbols-outlined text-sm text-outline-variant hover:text-primary">edit</span>
+                            </button>
+                          </div>
+                        )}
                         <span className="text-[10px] font-bold uppercase text-outline-variant tracking-wider">Stage {String(idx + 1).padStart(2, '0')}</span>
                       </div>
                     </div>
@@ -1615,6 +1733,7 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
                       </button>
                     </div>
                   </div>
+
                   <div className="space-y-4">
                     <div className={`flex items-center justify-between p-4 rounded-xl ${stage.requiresPrevious && idx > 0 ? 'bg-primary-container/30 border border-primary-container' : 'bg-surface border border-transparent'}`}>
                       <div className="flex items-center gap-3">
@@ -1623,16 +1742,30 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
                       </div>
                       {idx > 0 && <input type="checkbox" className="apple-toggle" checked={stage.requiresPrevious} onChange={() => toggleRequires(stage.id)} />}
                     </div>
+
                     <div className="pt-3">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Required Tasks</h4>
-                      <div className="space-y-2">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Required Tasks — drag to reorder</h4>
+                      <div className="space-y-1">
                         {stage.requirements.map((req, ri) => (
-                          <div key={ri} className="group flex items-center gap-3 p-3 hover:bg-surface-container-low rounded-lg transition-colors">
+                          <div
+                            key={ri}
+                            draggable
+                            onDragStart={e => onTaskDragStart(e, stage.id, ri)}
+                            onDragOver={e => onTaskDragOver(e, stage.id, ri)}
+                            onDrop={e => onTaskDrop(e, stage.id, ri)}
+                            onDragEnd={() => { setDragTask(null); setDragOverTask(null); }}
+                            className={`group flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                              dragOverTask?.stageId === stage.id && dragOverTask?.idx === ri && dragTask?.idx !== ri
+                                ? 'bg-primary-container/30 border border-primary/30'
+                                : 'hover:bg-surface-container-low'
+                            } ${dragTask?.stageId === stage.id && dragTask?.idx === ri ? 'opacity-40' : ''}`}
+                          >
+                            <span className="material-symbols-outlined text-outline-variant cursor-grab active:cursor-grabbing select-none">drag_indicator</span>
                             <div className="w-2 h-2 rounded-full bg-primary-dim flex-shrink-0" />
                             {editingTask?.stageId === stage.id && editingTask?.taskIdx === ri ? (
                               <input value={taskDraft} onChange={e => setTaskDraft(e.target.value)} autoFocus
                                 onBlur={() => { updateTask(stage.id, ri, taskDraft); setEditingTask(null); }}
-                                onKeyDown={e => { if (e.key === 'Enter') { updateTask(stage.id, ri, taskDraft); setEditingTask(null); } }}
+                                onKeyDown={e => { if (e.key === 'Enter') { updateTask(stage.id, ri, taskDraft); setEditingTask(null); } if (e.key === 'Escape') setEditingTask(null); }}
                                 className="flex-1 border border-primary/30 rounded-md px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-primary/30" />
                             ) : (
                               <span className="text-sm flex-1">{req}</span>
@@ -1645,9 +1778,14 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
                             </button>
                           </div>
                         ))}
+
+                        {/* Add new task row */}
                         <div className="flex items-center gap-3 p-3">
-                          <div className="w-2 h-2 rounded-full bg-outline-variant/40 flex-shrink-0" />
-                          <input value={newTaskDraft[stage.id] || ''} onChange={e => setNewTaskDraft(prev => ({ ...prev, [stage.id]: e.target.value }))}
+                          <span className="material-symbols-outlined text-outline-variant/30">drag_indicator</span>
+                          <div className="w-2 h-2 rounded-full bg-outline-variant/30 flex-shrink-0" />
+                          <input
+                            value={newTaskDraft[stage.id] || ''}
+                            onChange={e => setNewTaskDraft(prev => ({ ...prev, [stage.id]: e.target.value }))}
                             onKeyDown={e => e.key === 'Enter' && addTask(stage.id)}
                             placeholder="Add new requirement…"
                             className="flex-1 text-sm text-on-surface-variant bg-transparent outline-none border-b border-outline-variant/20 pb-1 focus:border-primary placeholder:text-outline-variant" />
@@ -1661,6 +1799,7 @@ function Engine({ stages, setStages, rules, setRules, groups, toast }) {
                 </div>
               </div>
             ))}
+
             <div className="flex justify-center pt-4">
               <button onClick={addStage}
                 className="group flex items-center gap-3 px-8 py-4 bg-surface-container-lowest rounded-full shadow-lg hover:shadow-xl transition-all border border-outline-variant/10 text-primary hover:scale-105 active:scale-95 duration-200">
