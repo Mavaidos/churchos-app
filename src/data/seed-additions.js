@@ -1,0 +1,111 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1: Add this to src/data/seed.js
+// Add `servingTeam: true` to groups 1, 3, and 5 in seedGroups, e.g.:
+//   { id: 1, name: 'Worship Team', ..., servingTeam: true, ... }
+//   { id: 3, name: 'Volunteers',   ..., servingTeam: true, ... }
+//   { id: 5, name: 'Outreach Team',..., servingTeam: true, ... }
+//
+// Then paste this at the bottom of seed.js:
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const seedEvents = [
+  {
+    id: 1,
+    title: 'Sunday Morning Service',
+    description: 'Join us for worship, prayer, and the Word. All are welcome.',
+    date: '2026-04-13',
+    startTime: '09:00',
+    endTime: '11:00',
+    location: 'Main Auditorium',
+    category: 'service',
+    rsvpIds: [1, 3, 5, 7],
+  },
+  {
+    id: 2,
+    title: 'iConnect Kickoff — Zone 3',
+    description: 'First meeting of our new iConnect home group in Zone 3. Come ready to connect!',
+    date: '2026-04-15',
+    startTime: '19:00',
+    endTime: '21:00',
+    location: '45 Maple Avenue, Pretoria',
+    category: 'group',
+    rsvpIds: [1, 4],
+  },
+  {
+    id: 3,
+    title: 'Baptism Service',
+    description: "Come celebrate members who are taking their next step of faith. It's going to be powerful.",
+    date: '2026-04-20',
+    startTime: '10:00',
+    endTime: '12:00',
+    location: 'Main Auditorium',
+    category: 'milestone',
+    rsvpIds: [2, 6, 8],
+  },
+  {
+    id: 4,
+    title: 'Worship Team Rehearsal',
+    description: 'Weekly rehearsal for all worship team members. Mandatory attendance.',
+    date: '2026-04-17',
+    startTime: '18:00',
+    endTime: '20:00',
+    location: 'Worship Hall',
+    category: 'team',
+    rsvpIds: [3, 7],
+  },
+  {
+    id: 5,
+    title: 'Community Outreach Day',
+    description: 'Serving our community with food parcels, prayer, and love.',
+    date: '2026-04-25',
+    startTime: '08:00',
+    endTime: '13:00',
+    location: 'Sunnyside Community Centre',
+    category: 'outreach',
+    rsvpIds: [5, 7],
+  },
+  {
+    id: 6,
+    title: 'Foundations of Faith Seminar',
+    description: 'Required for members completing the Believe stage of the Blueprint journey.',
+    date: '2026-04-26',
+    startTime: '09:00',
+    endTime: '13:00',
+    location: 'Conference Room A',
+    category: 'workshop',
+    rsvpIds: [],
+  },
+  {
+    id: 7,
+    title: 'Youth Ministry Night',
+    description: 'A special evening for teens and young adults. Bring a friend!',
+    date: '2026-05-02',
+    startTime: '18:00',
+    endTime: '21:00',
+    location: 'Youth Centre',
+    category: 'group',
+    rsvpIds: [6],
+  },
+  {
+    id: 8,
+    title: 'Sunday Morning Service',
+    description: 'Join us for worship, prayer, and the Word. All are welcome.',
+    date: '2026-04-27',
+    startTime: '09:00',
+    endTime: '11:00',
+    location: 'Main Auditorium',
+    category: 'service',
+    rsvpIds: [],
+  },
+  {
+    id: 9,
+    title: 'Leadership Connect',
+    description: 'Monthly gathering for all group and team leaders. Dinner included.',
+    date: '2026-05-05',
+    startTime: '18:30',
+    endTime: '20:30',
+    location: 'Boardroom',
+    category: 'team',
+    rsvpIds: [3, 4, 7],
+  },
+];

@@ -35,8 +35,8 @@ function EventCard({ event }) {
   );
 }
 
-export function Events() {
-  const [events, setEvents] = useState(SAMPLE_EVENTS);
+export function Events({ events, setEvents }) {
+  
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title:'', date:'', start_time:'', location:'', type:'service', description:'' });
   const f = (k,v) => setForm(p => ({ ...p, [k]:v }));

@@ -25,7 +25,8 @@ import {
 } from './lib/constants';
 
 // ── Data ─────────────────────────────────────────────────────────────────────
-import { seedMembers, seedGroups, seedStages, seedRules, seedUsers } from './data/seed';
+import { seedMembers, seedGroups, seedStages, seedRules, seedUsers, seedEvents } from './data/seed';
+
 
 // ── Shared components ─────────────────────────────────────────────────────────
 import { Avatar, SmAvatar }        from './components/shared/Avatar';
@@ -2093,6 +2094,7 @@ function RoleGuard({ roles, children }) {
 
 export default function App() {
   const [members, setMembers]               = useState(seedMembers);
+  const [events, setEvents]                 = useState(seedEvents);
   const [groups, setGroups]                 = useState(seedGroups);
   const [stages, setStages]                 = useState(seedStages);
   const [rules, setRules]                   = useState(seedRules);
@@ -2100,6 +2102,8 @@ export default function App() {
   const [toastMsg, setToastMsg]             = useState(null);
   const [showEnrolModal, setShowEnrolModal] = useState(false);
   const [user, setUser]                     = useState(null);
+
+  
 
   const toast  = (msg) => setToastMsg(msg);
   const login  = (u)   => setUser(u);
@@ -2151,7 +2155,9 @@ export default function App() {
   if (user.role === 'member') {
     return (
       <AuthContext.Provider value={{ user, login, logout }}>
-        <MemberPortal members={members} stages={stages} setMembers={setMembers} groups={groups} toast={toast} onLogout={logout} />
+        <MemberPortal members={members} stages={stages} setMembers={setMembers}
+  groups={groups} events={events} setEvents={setEvents}
+  toast={toast} onLogout={logout} />
         {toastMsg && <Toast msg={toastMsg} onDone={() => setToastMsg(null)} />}
       </AuthContext.Provider>
     );
@@ -2191,7 +2197,10 @@ export default function App() {
                 <Attendance members={members} groups={groups} />
               </RoleGuard>
             } />
-            <Route path="/events"   element={<Events />} />
+            <Route 
+  path="/events" 
+  element={<Events events={events} setEvents={setEvents} />} 
+/>
             <Route path="/messages" element={
               <RoleGuard roles={['pastor', 'admin']}>
                 <Messages groups={groups} />
