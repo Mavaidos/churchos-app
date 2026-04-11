@@ -63,15 +63,31 @@ export function canAccessFullApp(user, members) {
   return member.enrollmentStage === 'approved' || member.enrollmentStage === 'in_discipleship';
 }
 
+function generateTempPassword(member) {
+  const firstName = (member.name || '').split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
+  const phoneDigits = (member.phone || '').replace(/\D/g, '');
+  const last4 = phoneDigits.slice(-4) || Math.floor(1000 + Math.random() * 9000).toString();
+  return `${firstName}${last4}`;
+}
+
 export function createUserForMember(member) {
-  const username = member.phone?.trim() || `user_${member.id}`;
-  const email = member.email?.trim() || `${username}@church.member`;
+  const tempPassword = generateTempPassword(member);
+  const email = member.email?.trim() || `${member.phone?.replace(/\D/g,'') || member.id}@member.church`;
   return {
-    id: `u_${member.id}`, email, username,
-    password:null, passwordHash:null, role:'member',
-    groupId:null, memberId:member.id, name:member.name,
-    initials: member.initials ?? member.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2),
-    mustSetPassword:true,
+    user: {
+      id:              `u_${member.id}`,
+      email,
+      username:        member.phone?.trim() || `user_${member.id}`,
+      password:        tempPassword,
+      passwordHash:    null,
+      role:            'member',
+      groupId:         null,
+      memberId:        member.id,
+      name:            member.name,
+      initials:        member.initials ?? member.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2),
+      mustSetPassword: true,
+    },
+    tempPassword,
   };
 }
 
