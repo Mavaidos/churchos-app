@@ -72,7 +72,7 @@ function generateTempPassword(member) {
 
 export function createUserForMember(member) {
   const tempPassword = generateTempPassword(member);
-  const email = member.email?.trim() || `${member.phone?.replace(/\D/g,'') || member.id}@member.church`;
+  const email = member.email?.trim().toLowerCase() || `${member.phone?.replace(/\D/g,'') || member.id}@member.church`;
   return {
     user: {
       id:              `u_${member.id}`,

@@ -2,7 +2,7 @@
 // React Router v7 — URL-based navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 // ── Lib ──────────────────────────────────────────────────────────────────────
@@ -427,6 +427,39 @@ function PendingApprovalPage({ user, member, onLogout }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+// =============================================================================
+// MEMBER AVATAR — shows photo if uploaded, falls back to initials
+// =============================================================================
+function MemberAvatar({ member, size = 36, ring = false }) {
+  const style = {
+    width: size, height: size, flexShrink: 0,
+    borderRadius: '50%',
+    ...(ring ? { boxShadow: '0 0 0 2px white' } : {}),
+  };
+  if (member?.avatarUrl) {
+    return (
+      <img
+        src={member.avatarUrl}
+        alt={member?.name}
+        style={{ ...style, objectFit: 'cover' }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        ...style,
+        background: member?.avatarColor ?? '#d5e3fd',
+        color: '#515f74',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontWeight: 700,
+        fontSize: Math.round(size * 0.36),
+      }}
+    >
+      {member?.initials}
     </div>
   );
 }
@@ -960,337 +993,446 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
 // =============================================================================
 
 function Members({
-  members,
-  groups,
-  stages,
-  setMembers,
-  setUsers,
-  setNewMemberCredentials,
-  toast,
+  members, groups, stages,
+  setMembers, setUsers, setNewMemberCredentials, toast,
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [filterStage, setFilterStage] = useState("All Stages");
-  const [filterGroup, setFilterGroup] = useState("All Groups");
-  const [filterStatus, setFilterStatus] = useState("All");
-  const [showAdd, setShowAdd] = useState(false);
+
+  const [search, setSearch]           = useState('');
+  const [filterStage, setFilterStage] = useState('All Stages');
+  const [filterGroup, setFilterGroup] = useState('All Groups');
+  const [filterStatus, setFilterStatus] = useState('All');
+  const [showAdd, setShowAdd]         = useState(false);
   const [editingMember, setEditingMember] = useState(null);
-  const [editForm, setEditForm] = useState({});
-  const ef = (k, v) => setEditForm((p) => ({ ...p, [k]: v }));
+  const [editForm, setEditForm]       = useState({});
+  const [viewMode, setViewMode]       = useState('card');
+  const [page, setPage]               = useState(1);
+  const PAGE_SIZE = 10;
+
+  const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
 
   const visibleMembers = getVisibleMembers(user, members, groups);
-  const filtered = visibleMembers.filter((m) => {
+  const filtered = visibleMembers.filter(m => {
     const q = search.toLowerCase();
     return (
-      (!q ||
-        m.name.toLowerCase().includes(q) ||
-        (m.email || "").toLowerCase().includes(q) ||
-        (m.phone || "").includes(q)) &&
-      (filterStage === "All Stages" ||
-        getMemberStageName(m, stages) === filterStage) &&
-      (filterGroup === "All Groups" || m.group === filterGroup) &&
-      (filterStatus === "All" || m.enrollmentStage === filterStatus)
+      (!q || m.name.toLowerCase().includes(q) ||
+        (m.email || '').toLowerCase().includes(q) ||
+        (m.phone || '').includes(q)) &&
+      (filterStage === 'All Stages' || getMemberStageName(m, stages) === filterStage) &&
+      (filterGroup === 'All Groups' || m.group === filterGroup) &&
+      (filterStatus === 'All' || m.enrollmentStage === filterStatus)
     );
   });
-  const [viewMode, setViewMode] = useState("card");
+
+  // Reset page whenever filters/search change
+  useEffect(() => { setPage(1); }, [search, filterStage, filterGroup, filterStatus]);
+
+  const totalPages     = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage       = Math.min(page, totalPages);
+  const paginated      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const handleAdd = (data) => {
     const nm = { ...data, id: Date.now() };
-    setMembers((prev) => [nm, ...prev]);
+    setMembers(prev => [nm, ...prev]);
     const { user: nu, tempPassword } = createUserForMember(nm);
-    setUsers((prev) =>
-      prev.find((u) => u.memberId === nm.id) ? prev : [...prev, nu],
-    );
+    setUsers(prev => prev.find(u => u.memberId === nm.id) ? prev : [...prev, nu]);
     setShowAdd(false);
-    setNewMemberCredentials({ member: nm, email: nu.email, tempPassword }); // ADDED
+    setNewMemberCredentials({ member: nm, email: nu.email, tempPassword });
   };
 
   const handleApprove = (member) => {
-    if (!hasPermission(user, "approve", member)) {
-      toast("⛔ Permission denied");
-      return;
-    }
-    const updated = {
-      ...member,
-      enrollmentStage: "approved",
-      approvedBy: user.id,
-      approvedAt: new Date().toISOString(),
-    };
-    setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    if (!hasPermission(user, 'approve', member)) { toast('⛔ Permission denied'); return; }
+    const updated = { ...member, enrollmentStage: 'approved', approvedBy: user.id, approvedAt: new Date().toISOString() };
+    setMembers(prev => prev.map(m => m.id === updated.id ? updated : m));
     toast(`✓ ${member.name} approved`);
   };
 
-  // ADDED — edit handler
   const handleEditOpen = (m, e) => {
     e.stopPropagation();
     setEditingMember(m);
     setEditForm({
-      name: m.name,
-      phone: m.phone ?? "",
-      email: m.email ?? "",
-      maritalStatus: m.maritalStatus ?? "",
-      spouseName: m.spouseName ?? "",
-      faithStatus: m.faithStatus ?? "visitor",
-      comment: m.comment ?? "",
-      homeAddress: m.homeAddress ?? "",
+      name: m.name, phone: m.phone ?? '', email: m.email ?? '',
+      maritalStatus: m.maritalStatus ?? '', spouseName: m.spouseName ?? '',
+      faithStatus: m.faithStatus ?? 'visitor', comment: m.comment ?? '',
+      homeAddress: m.homeAddress ?? '', avatarUrl: m.avatarUrl ?? null,
     });
   };
 
   const handleEditSave = () => {
     const updated = { ...editingMember, ...editForm };
-    setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    setMembers(prev => prev.map(m => m.id === updated.id ? updated : m));
     setEditingMember(null);
     toast(`✓ ${updated.name} updated`);
   };
 
-  // ADDED — delete handler
   const handleDelete = (m, e) => {
     e.stopPropagation();
     if (!window.confirm(`Delete ${m.name}? This cannot be undone.`)) return;
-    setMembers((prev) => prev.filter((mb) => mb.id !== m.id));
-    setUsers((prev) => prev.filter((u) => u.memberId !== m.id));
+    setMembers(prev => prev.filter(mb => mb.id !== m.id));
+    setUsers(prev => prev.filter(u => u.memberId !== m.id));
     toast(`${m.name} removed`);
   };
 
+  // Stage badge colours
+  const stagePillCls = (idx) => [
+    'bg-blue-100 text-blue-700',
+    'bg-cyan-100 text-cyan-700',
+    'bg-violet-100 text-violet-700',
+    'bg-green-100 text-green-700',
+  ][idx] ?? 'bg-surface-container text-on-surface-variant';
+
+  const enrollPillCls = (es) => ({
+    new_applicant:   'bg-amber-100 text-amber-700',
+    approved:        'bg-primary-container text-primary',
+    in_discipleship: 'bg-green-100 text-green-700',
+  })[es] ?? 'bg-surface-container text-on-surface-variant';
+
+  const enrollLabel = (es) => ({
+    new_applicant:   'New',
+    approved:        'Approved',
+    in_discipleship: 'Blueprint',
+  })[es] ?? es;
+
   return (
     <div className="fade-in">
+      {/* ── Top bar ── */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8">
-        <span className="text-lg font-bold text-slate-800 font-headline">
-          Members
-        </span>
-        <div className="flex items-center gap-4">
-    
+        <span className="text-lg font-bold text-slate-800 font-headline">Members</span>
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
           <div className="hidden lg:flex items-center gap-1 p-1 bg-surface-container-low rounded-lg">
-            {[
-              { mode: "card", icon: "grid_view" },
-              { mode: "list", icon: "view_agenda" },
-            ].map((v) => (
-              <button
-                key={v.mode}
-                onClick={() => setViewMode(v.mode)}
-                className={`p-1.5 rounded-md transition-all ${
-                  viewMode === v.mode
-                    ? "bg-surface-container-lowest shadow-sm text-primary"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-              >
-                <span className="material-symbols-outlined text-sm">
-                  {v.icon}
-                </span>
+            {[{ mode: 'card', icon: 'grid_view' }, { mode: 'list', icon: 'view_agenda' }].map(v => (
+              <button key={v.mode} onClick={() => setViewMode(v.mode)}
+                className={`p-1.5 rounded-md transition-all ${viewMode === v.mode ? 'bg-surface-container-lowest shadow-sm text-primary' : 'text-on-surface-variant hover:text-on-surface'}`}>
+                <span className="material-symbols-outlined text-sm">{v.icon}</span>
               </button>
             ))}
           </div>
+          {/* Search */}
           <div className="relative hidden lg:block">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
-              search
-            </span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+            <input value={search} onChange={e => setSearch(e.target.value)}
               className="bg-surface-container-low border-none rounded-full py-1.5 pl-9 pr-4 text-sm w-64 focus:ring-1 focus:ring-primary/20 outline-none"
-              placeholder="Search members..."
-            />
+              placeholder="Search members..." />
           </div>
-          {hasPermission(user, "enrol") && (
-            <button
-              onClick={() => setShowAdd(true)}
-              className="bg-primary hover:bg-primary-dim text-on-primary px-5 py-2 rounded-md flex items-center gap-2 font-semibold text-sm transition-all shadow-sm"
-            >
-              <span className="material-symbols-outlined text-lg">add</span>Add
-              Member
+          {hasPermission(user, 'enrol') && (
+            <button onClick={() => setShowAdd(true)}
+              className="bg-primary hover:bg-primary-dim text-on-primary px-5 py-2 rounded-md flex items-center gap-2 font-semibold text-sm transition-all shadow-sm">
+              <span className="material-symbols-outlined text-lg">add</span>Add Member
             </button>
           )}
         </div>
       </div>
+
       <div className="p-8 max-w-7xl mx-auto">
+        {/* Title row */}
         <div className="flex justify-between items-end mb-8">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-on-surface leading-none mb-2 font-headline">
-              Members
-            </h1>
-            <p className="text-on-surface-variant">
-              Manage your community's spiritual journey.
-            </p>
+            <h1 className="text-4xl font-extrabold tracking-tight text-on-surface leading-none mb-2 font-headline">Members</h1>
+            <p className="text-on-surface-variant">Manage your community's spiritual journey.</p>
           </div>
-          <span className="text-on-surface-variant text-sm">
-            {filtered.length} of {visibleMembers.length} members
-          </span>
+          <span className="text-on-surface-variant text-sm">{filtered.length} of {visibleMembers.length} members</span>
         </div>
 
+        {/* Filters */}
         <div className="bg-surface-container-low rounded-xl p-6 mb-8 flex flex-wrap items-center gap-8">
           {[
-            {
-              label: "Stage",
-              value: filterStage,
-              set: setFilterStage,
-              opts: ["All Stages", ...stages.map((s) => s.name)],
-            },
-            {
-              label: "Group",
-              value: filterGroup,
-              set: setFilterGroup,
-              opts: ["All Groups", ...groups.map((g) => g.name)],
-            },
-            {
-              label: "Lifecycle",
-              value: filterStatus,
-              set: setFilterStatus,
-              opts: ["All", "new_applicant", "approved", "in_discipleship"],
-            },
-          ].map((fi) => (
+            { label: 'Stage',     value: filterStage,  set: setFilterStage,  opts: ['All Stages',  ...stages.map(s => s.name)] },
+            { label: 'Group',     value: filterGroup,  set: setFilterGroup,  opts: ['All Groups',  ...groups.map(g => g.name)] },
+            { label: 'Lifecycle', value: filterStatus, set: setFilterStatus, opts: ['All', 'new_applicant', 'approved', 'in_discipleship'] },
+          ].map(fi => (
             <div key={fi.label}>
-              <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">
-                {fi.label}
-              </label>
-              <select
-                value={fi.value}
-                onChange={(e) => fi.set(e.target.value)}
-                className="bg-transparent border-0 text-sm font-semibold text-primary focus:ring-0 cursor-pointer p-0 pr-6 outline-none"
-              >
-                {fi.opts.map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
+              <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">{fi.label}</label>
+              <select value={fi.value} onChange={e => fi.set(e.target.value)}
+                className="bg-transparent border-0 text-sm font-semibold text-primary focus:ring-0 cursor-pointer p-0 pr-6 outline-none">
+                {fi.opts.map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
           ))}
         </div>
 
-        {viewMode === 'card' ? (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-    {filtered.map((m) => (
-      <div
-        key={m.id}
-        className="member-card bg-surface-container-lowest rounded-xl p-6 cursor-pointer"
-        onClick={() => navigate(`/members/${m.id}`)}
-      >
-        <div className="flex items-start justify-between mb-5">
-          <div className="border-4 border-white shadow-sm rounded-2xl">
-            <Avatar member={m} size={14} />
-          </div>
-          <StatusBadge status={m.status} enrollmentStage={m.enrollmentStage} />
-        </div>
-
-        <div className="mb-5">
-          <h3 className="text-lg font-bold text-on-surface mb-1 font-headline">
-            {m.name}
-          </h3>
-          <p className="text-on-surface-variant text-sm">
-            {m.group || (
-              <span className="italic text-outline-variant">New Enrolment</span>
+        {/* ── CARD VIEW ── */}
+        {viewMode === 'card' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {paginated.map(m => (
+              <div key={m.id}
+                className="member-card bg-surface-container-lowest rounded-xl p-6 cursor-pointer"
+                onClick={() => navigate(`/members/${m.id}`)}>
+                <div className="flex items-start justify-between mb-5">
+                  <div className="border-4 border-white shadow-sm rounded-2xl overflow-hidden">
+                    <MemberAvatar member={m} size={56} />
+                  </div>
+                  <StatusBadge status={m.status} enrollmentStage={m.enrollmentStage} />
+                </div>
+                <div className="mb-5">
+                  <h3 className="text-lg font-bold text-on-surface mb-1 font-headline">{m.name}</h3>
+                  <p className="text-on-surface-variant text-sm">
+                    {m.group || <span className="italic text-outline-variant">New Enrolment</span>}
+                  </p>
+                </div>
+                <div className="pt-5 border-t border-surface-container flex items-center justify-between">
+                  <StageBadge stageName={getMemberStageName(m, stages)} stageIndex={m.currentStageIndex} />
+                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <button onClick={e => handleEditOpen(m, e)}
+                      className="p-1.5 rounded-lg hover:bg-primary-container/30 text-outline-variant hover:text-primary transition-colors">
+                      <span className="material-symbols-outlined text-sm">edit</span>
+                    </button>
+                    <button onClick={e => handleDelete(m, e)}
+                      className="p-1.5 rounded-lg hover:bg-error-container/20 text-outline-variant hover:text-error transition-colors">
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  </div>
+                </div>
+                {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
+                  <div className="mt-4 pt-4 border-t border-surface-container" onClick={e => e.stopPropagation()}>
+                    <button onClick={() => handleApprove(m)}
+                      className="w-full py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors">
+                      <span className="material-symbols-outlined text-sm ms-filled">check_circle</span>Approve Member
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {hasPermission(user, 'enrol') && (
+              <div onClick={() => setShowAdd(true)}
+                className="border-2 border-dashed border-outline-variant/20 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-primary/40 transition-all cursor-pointer group">
+                <span className="material-symbols-outlined text-outline-variant group-hover:text-primary mb-2 transition-colors text-3xl">person_add</span>
+                <p className="text-sm font-semibold text-outline group-hover:text-primary transition-colors">Add New Member</p>
+              </div>
             )}
-          </p>
-        </div>
-
-        <div className="pt-5 border-t border-surface-container flex items-center justify-between">
-          <StageBadge
-            stageName={getMemberStageName(m, stages)}
-            stageIndex={m.currentStageIndex}
-          />
-          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <button onClick={(e) => handleEditOpen(m, e)}>
-              <span className="material-symbols-outlined text-sm">edit</span>
-            </button>
-            <button onClick={(e) => handleDelete(m, e)}>
-              <span className="material-symbols-outlined text-sm">delete</span>
-            </button>
           </div>
-        </div>
+        )}
 
-        {m.enrollmentStage === "new_applicant" &&
-          hasPermission(user, "approve", m) && (
-            <div className="mt-4 pt-4 border-t border-surface-container" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => handleApprove(m)}
-                className="w-full py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <span className="material-symbols-outlined text-sm ms-filled">
-                  check_circle
-                </span>
-                Approve Member
+        {/* ── LIST VIEW ── */}
+        {viewMode === 'list' && (
+          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden shadow-sm">
+            <table className="w-full border-collapse">
+              <colgroup>
+                <col style={{ width: '260px' }} />
+                <col style={{ width: '155px' }} />
+                <col style={{ width: '155px' }} />
+                <col style={{ width: '130px' }} />
+                <col style={{ width: '115px' }} />
+                <col style={{ width: '130px' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-surface-container bg-surface-container-low/70">
+                  {['Member', 'Phone', 'Group', 'Stage', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="text-left px-5 py-3.5 text-[10px] font-bold uppercase tracking-widest text-outline whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map(m => (
+                  <tr key={m.id}
+                    className="border-b border-surface-container hover:bg-surface-container-low/60 transition-colors group cursor-pointer"
+                    onClick={() => navigate(`/members/${m.id}`)}>
+
+                    {/* Member */}
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <MemberAvatar member={m} size={36} ring />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-on-surface truncate leading-tight">{m.name}</p>
+                          <p className="text-xs text-on-surface-variant truncate mt-0.5">{m.email || '—'}</p>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Phone */}
+                    <td className="px-5 py-3">
+                      <span className="text-sm text-on-surface-variant">{m.phone || '—'}</span>
+                    </td>
+
+                    {/* Group */}
+                    <td className="px-5 py-3">
+                      <span className="text-sm text-on-surface-variant truncate block max-w-[130px]">
+                        {m.group || <span className="italic text-outline-variant">None</span>}
+                      </span>
+                    </td>
+
+                    {/* Stage */}
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${stagePillCls(m.currentStageIndex)}`}>
+                        {getMemberStageName(m, stages)}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${enrollPillCls(m.enrollmentStage)}`}>
+                        {enrollLabel(m.enrollmentStage)}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={e => handleEditOpen(m, e)}
+                          className="p-1.5 rounded-lg text-outline-variant hover:text-primary hover:bg-primary-container/30 transition-colors" title="Edit">
+                          <span className="material-symbols-outlined text-sm">edit</span>
+                        </button>
+                        <button onClick={e => handleDelete(m, e)}
+                          className="p-1.5 rounded-lg text-outline-variant hover:text-error hover:bg-error-container/20 transition-colors" title="Delete">
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                        {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
+                          <button onClick={() => handleApprove(m)}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-green-700 bg-green-100 hover:bg-green-200 transition-colors whitespace-nowrap flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs ms-filled">check_circle</span>Approve
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {filtered.length === 0 && (
+              <div className="text-center py-16 text-on-surface-variant">
+                <span className="material-symbols-outlined text-4xl mb-3 block text-outline-variant">group_off</span>
+                <p className="font-semibold text-sm">No members match your filters</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PAGINATION ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-sm text-on-surface-variant">
+              Showing <span className="font-semibold text-on-surface">{(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)}</span> of <span className="font-semibold text-on-surface">{filtered.length}</span> members
+            </p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
+                className="p-2 rounded-lg border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                <span className="material-symbols-outlined text-sm">chevron_left</span>
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === safePage ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface border border-outline-variant/20'}`}>
+                  {p}
+                </button>
+              ))}
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+                className="p-2 rounded-lg border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-low hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                <span className="material-symbols-outlined text-sm">chevron_right</span>
               </button>
             </div>
-          )}
-      </div>
-    ))}
-
-    {hasPermission(user, "enrol") && (
-      <div
-        className="border-2 border-dashed border-outline-variant/20 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-primary/40 transition-all cursor-pointer group"
-        onClick={() => setShowAdd(true)}
-      >
-        <span className="material-symbols-outlined">person_add</span>
-        <p>Add New Member</p>
-      </div>
-    )}
-  </div>
-) : (
-  <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
-    <table className="w-full text-sm">
-      <tbody>
-        {filtered.map(m => (
-          <tr key={m.id}>
-            <td>{m.name}</td>
-            <td>{m.email}</td>
-            <td>
-              <button onClick={e => handleEditOpen(m, e)}>Edit</button>
-              <button onClick={e => handleDelete(m, e)}>Delete</button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-        {filtered.length === 0 && (
-          <div className="text-center py-20 text-on-surface-variant">
-            <span className="material-symbols-outlined text-5xl mb-4 block text-outline-variant">
-              group_off
-            </span>
-            <p className="font-semibold">
-              No members match the selected filters
-            </p>
           </div>
         )}
       </div>
-           {showAdd && (
-        <AddMemberModal
-          groups={groups}
-          stages={stages}
-          onClose={() => setShowAdd(false)}
-          onSave={handleAdd}
-        />
+
+      {/* ── Modals ── */}
+      {showAdd && (
+        <AddMemberModal groups={groups} stages={stages} onClose={() => setShowAdd(false)} onSave={handleAdd} />
       )}
 
-      {/* ✅ MOVE EDIT MODAL HERE */}
       {editingMember && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditingMember(null)}>
-          <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg mx-4">
-            <div className="p-6">
-              <h3 className="text-lg font-bold mb-4">Edit Member</h3>
-
-              <input
-                value={editForm.name || ''}
-                onChange={e => ef('name', e.target.value)}
-                className="w-full mb-2 border p-2"
-              />
-
-              <input
-                value={editForm.email || ''}
-                onChange={e => ef('email', e.target.value)}
-                className="w-full mb-2 border p-2"
-              />
-
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => setEditingMember(null)}>Cancel</button>
-                <button onClick={handleEditSave}>Save</button>
+          <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg mx-4 slide-in overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-7 pb-5 border-b border-surface-container flex justify-between items-start flex-shrink-0">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Edit Member</p>
+                <h3 className="text-xl font-bold font-headline">{editingMember.name}</h3>
               </div>
+              <button onClick={() => setEditingMember(null)} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-4 overflow-y-auto flex-1">
+              {/* ── Photo upload ── */}
+              <div>
+                <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-3 block">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  <div className="rounded-full overflow-hidden flex-shrink-0 ring-4 ring-surface-container-low">
+                    <MemberAvatar member={{ ...editingMember, avatarUrl: editForm.avatarUrl }} size={64} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="cursor-pointer px-4 py-2.5 rounded-xl border border-outline-variant/30 bg-surface-container-low text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-colors flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">photo_camera</span>
+                      {editForm.avatarUrl ? 'Change Photo' : 'Upload Photo'}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = ev => ef('avatarUrl', ev.target.result);
+                        reader.readAsDataURL(file);
+                      }} />
+                    </label>
+                    {editForm.avatarUrl && (
+                      <button onClick={() => ef('avatarUrl', null)}
+                        className="text-xs text-error hover:underline text-left px-1">
+                        Remove photo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Fields */}
+              {[
+                { label: 'Full Name',      key: 'name',          type: 'text'  },
+                { label: 'Phone',          key: 'phone',         type: 'tel'   },
+                { label: 'Email',          key: 'email',         type: 'email' },
+                { label: 'Home Address',   key: 'homeAddress',   type: 'text'  },
+                { label: 'Spouse Name',    key: 'spouseName',    type: 'text'  },
+              ].map(fi => (
+                <div key={fi.key}>
+                  <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-1.5 block">{fi.label}</label>
+                  <input type={fi.type} value={editForm[fi.key] ?? ''}
+                    onChange={e => ef(fi.key, e.target.value)}
+                    className="w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                </div>
+              ))}
+
+              <div>
+                <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">Marital Status</label>
+                <select value={editForm.maritalStatus ?? ''} onChange={e => ef('maritalStatus', e.target.value)}
+                  className="w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20">
+                  <option value="">Select status</option>
+                  <option value="single">Single</option>
+                  <option value="married">Married</option>
+                  <option value="divorced">Divorced</option>
+                  <option value="widowed">Widowed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">Spiritual Status</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[{ val: 'born_again', label: 'Born Again' }, { val: 'not_born_again', label: 'Not Born Again' }, { val: 'visitor', label: 'Visitor' }].map(opt => (
+                    <button key={opt.val} type="button" onClick={() => ef('faithStatus', opt.val)}
+                      className={`py-2.5 px-3 rounded-xl border-2 text-xs font-bold transition-all ${editForm.faithStatus === opt.val ? 'border-primary bg-primary-container/30 text-primary' : 'border-outline-variant/20 text-on-surface-variant hover:border-outline-variant'}`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-1.5 block">Pastoral Comment</label>
+                <textarea value={editForm.comment ?? ''} onChange={e => ef('comment', e.target.value)}
+                  rows={3} className="w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-surface-container flex gap-3 justify-end flex-shrink-0">
+              <button onClick={() => setEditingMember(null)}
+                className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleEditSave}
+                className="px-6 py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors flex items-center gap-2">
+                <span className="material-symbols-outlined text-sm ms-filled">save</span>Save Changes
+              </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -1632,12 +1774,9 @@ function MemberDetail({ members, stages, setMembers, toast }) {
         {/* Profile card */}
         <section className="bg-surface-container-lowest rounded-2xl p-8 flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none" />
-          <div
-            className="w-28 h-28 rounded-full flex items-center justify-center font-bold text-3xl ring-4 ring-surface-container-low font-headline"
-            style={{ background: m.avatarColor, color: "#515f74" }}
-          >
-            {m.initials}
-          </div>
+          <div className="ring-4 ring-surface-container-low rounded-full overflow-hidden flex-shrink-0">
+  <MemberAvatar member={m} size={112} />
+</div>
           <div className="flex-1 text-center md:text-left space-y-3">
             <h2 className="text-3xl font-extrabold font-headline tracking-tight">
               {m.name}
