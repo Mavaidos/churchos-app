@@ -608,14 +608,47 @@ function MemberPortal({ members, stages, setMembers, groups, events = [], setEve
             </div>
 
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
-              <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-                <h3 className="text-sm font-bold font-headline">Your Details</h3>
-                {!editing && (
+              <div className="px-5 pt-5 pb-4 border-b border-surface-container">
+  {/* Photo row */}
+  <div className="flex items-center gap-4 mb-4">
+    <div className="rounded-full overflow-hidden ring-4 ring-surface-container-low flex-shrink-0">
+      <MemberAvatar member={member} size={64} />
+    </div>
+    <div className="flex-1">
+      <p className="text-sm font-bold text-on-surface">{member.name}</p>
+      <label className="mt-1.5 cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+        <span className="material-symbols-outlined text-sm">photo_camera</span>
+        {member.avatarUrl ? 'Change Photo' : 'Upload Photo'}
+        <input type="file" accept="image/*" className="hidden" onChange={e => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = ev => setMembers(prev =>
+            prev.map(m => m.id === member.id ? { ...m, avatarUrl: ev.target.result } : m)
+          );
+          reader.readAsDataURL(file);
+        }} />
+      </label>
+      {member.avatarUrl && (
+        <button onClick={() => setMembers(prev =>
+          prev.map(m => m.id === member.id ? { ...m, avatarUrl: null } : m)
+        )} className="block text-xs text-error hover:underline mt-0.5">
+          Remove photo
+        </button>
+      )}
+    </div>
+    {!editing && (
+      <button onClick={openEdit} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline self-start">
+        <span className="material-symbols-outlined text-sm">edit</span>Edit
+      </button>
+    )}
+  </div>
+</div>
                   <button onClick={openEdit}
                     className="flex items-center gap-1 text-xs font-bold text-primary hover:underline">
                     <span className="material-symbols-outlined text-sm">edit</span>Edit
                   </button>
-                )}
+                )
               </div>
 
               {editing ? (
@@ -669,7 +702,7 @@ function MemberPortal({ members, stages, setMembers, groups, events = [], setEve
                   </div>
                 </div>
               )}
-            </div>
+           
 
             {/* Blueprint snapshot */}
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">

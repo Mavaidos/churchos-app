@@ -43,7 +43,7 @@ import {
 } from "./data/seed";
 
 // ── Shared components ─────────────────────────────────────────────────────────
-import { Avatar, SmAvatar } from "./components/shared/Avatar";
+import { Avatar, SmAvatar, MemberAvatar } from "./components/shared/Avatar";
 import { StatusBadge, StageBadge } from "./components/shared/StatusBadge";
 import { Toast } from "./components/shared/Toast";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -395,15 +395,7 @@ function PendingApprovalPage({ user, member, onLogout }) {
                 Your Profile
               </p>
               <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                  style={{
-                    background: member.avatarColor ?? "#d5e3fd",
-                    color: "#515f74",
-                  }}
-                >
-                  {member.initials}
-                </div>
+                <MemberAvatar member={member} size={40} />
                 <div>
                   <p className="text-sm font-bold text-on-surface">
                     {member.name}
@@ -430,39 +422,7 @@ function PendingApprovalPage({ user, member, onLogout }) {
     </div>
   );
 }
-// =============================================================================
-// MEMBER AVATAR — shows photo if uploaded, falls back to initials
-// =============================================================================
-function MemberAvatar({ member, size = 36, ring = false }) {
-  const style = {
-    width: size, height: size, flexShrink: 0,
-    borderRadius: '50%',
-    ...(ring ? { boxShadow: '0 0 0 2px white' } : {}),
-  };
-  if (member?.avatarUrl) {
-    return (
-      <img
-        src={member.avatarUrl}
-        alt={member?.name}
-        style={{ ...style, objectFit: 'cover' }}
-      />
-    );
-  }
-  return (
-    <div
-      style={{
-        ...style,
-        background: member?.avatarColor ?? '#d5e3fd',
-        color: '#515f74',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontWeight: 700,
-        fontSize: Math.round(size * 0.36),
-      }}
-    >
-      {member?.initials}
-    </div>
-  );
-}
+
 
 function CredentialsModal({ member, credentials, onClose }) {
   const [copied, setCopied] = useState(false);
@@ -1604,12 +1564,7 @@ function AssignMentorModal({
                 onClick={() => setSelected({ name: mb.name, id: mb.id })}
                 className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${isSelected ? "border-primary bg-primary-container/20" : "border-transparent hover:bg-surface-container-low"}`}
               >
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                  style={{ background: mb.avatarColor, color: "#515f74" }}
-                >
-                  {mb.initials}
-                </div>
+                <MemberAvatar member={mb} size={40} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-on-surface">{mb.name}</p>
                   <p className="text-xs text-on-surface-variant">
@@ -2637,15 +2592,7 @@ function Groups({ groups, setGroups, members, stages, rules, toast }) {
                         }}
                         className="w-full flex items-center gap-3 p-4 rounded-xl hover:bg-surface-container-low transition-colors text-left"
                       >
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                          style={{
-                            background: m.avatarColor,
-                            color: "#515f74",
-                          }}
-                        >
-                          {m.initials}
-                        </div>
+                        <MemberAvatar member={m} size={40} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-on-surface">
                             {m.name}
@@ -2799,16 +2746,7 @@ function Groups({ groups, setGroups, members, stages, rules, toast }) {
                   <div className="flex items-center gap-3 pt-1">
                     <div className="flex -space-x-2">
                       {gMembers.slice(0, 3).map((m) => (
-                        <div
-                          key={m.id}
-                          className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold"
-                          style={{
-                            background: m.avatarColor,
-                            color: "#515f74",
-                          }}
-                        >
-                          {m.initials}
-                        </div>
+                        <MemberAvatar key={m.id} member={m} size={28} ring />
                       ))}
                       {gMembers.length > 3 && (
                         <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
@@ -4014,13 +3952,11 @@ function MemberPortal({
   const { user } = useAuth();
   const member = members.find((m) => m.id === user?.memberId) ?? null;
 
-  // ── Tab navigation ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("journey");
-
-  // ── Profile edit ─────────────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const fd = (k, v) => setDraft((p) => ({ ...p, [k]: v }));
+
   const openEdit = () => {
     if (!member) return;
     setDraft({
@@ -4030,16 +3966,16 @@ function MemberPortal({
     });
     setEditing(true);
   };
+
   const saveEdit = () => {
     if (!member) return;
     setMembers((prev) =>
-      prev.map((m) => (m.id === member.id ? { ...m, ...draft } : m)),
+      prev.map((m) => (m.id === member.id ? { ...m, ...draft } : m))
     );
     setEditing(false);
     toast("✓ Profile updated");
   };
 
-  // ── Contact admin ─────────────────────────────────────────────────────────
   const [message, setMessage] = useState("");
   const [msgSent, setMsgSent] = useState(false);
   const sendMessage = () => {
@@ -4050,17 +3986,17 @@ function MemberPortal({
     setTimeout(() => setMsgSent(false), 4000);
   };
 
-  // ── Serving team detection ────────────────────────────────────────────────
   const memberGroups = groups.filter((g) => g.memberIds.includes(member?.id));
   const isServingMember = memberGroups.some((g) => g.servingTeam === true);
 
-  // ── Events ───────────────────────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const upcomingEvents = [...events]
     .filter((e) => new Date(e.date) >= today)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
-  const myRsvps = upcomingEvents.filter((e) => e.rsvpIds?.includes(member?.id));
+  const myRsvps = upcomingEvents.filter((e) =>
+    e.rsvpIds?.includes(member?.id)
+  );
 
   const handleRsvp = (eventId) => {
     if (!member) return;
@@ -4075,43 +4011,25 @@ function MemberPortal({
               rsvpIds: hasRsvp
                 ? e.rsvpIds.filter((id) => id !== member.id)
                 : [...(e.rsvpIds || []), member.id],
-            },
-      ),
+            }
+      )
     );
     toast(hasRsvp ? "RSVP removed" : "✓ RSVP confirmed!");
   };
 
-  // ── Check-in ──────────────────────────────────────────────────────────────
   const [checkIns, setCheckIns] = useState([
-    {
-      id: 1,
-      date: "2026-04-06",
-      service: "Sunday Morning Service",
-      time: "09:05",
-    },
-    {
-      id: 2,
-      date: "2026-03-30",
-      service: "Sunday Morning Service",
-      time: "09:12",
-    },
-    {
-      id: 3,
-      date: "2026-03-23",
-      service: "Sunday Morning Service",
-      time: "09:03",
-    },
+    { id: 1, date: "2026-04-06", service: "Sunday Morning Service", time: "09:05" },
+    { id: 2, date: "2026-03-30", service: "Sunday Morning Service", time: "09:12" },
+    { id: 3, date: "2026-03-23", service: "Sunday Morning Service", time: "09:03" },
     { id: 4, date: "2026-03-19", service: "Wednesday Prayer", time: "18:08" },
   ]);
-  const [selectedService, setSelectedService] = useState(
-    "Sunday Morning Service",
-  );
+  const [selectedService, setSelectedService] = useState("Sunday Morning Service");
   const [checkedInToday, setCheckedInToday] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const thisMonth = new Date().toISOString().slice(0, 7);
   const checkInsThisMonth = checkIns.filter((c) =>
-    c.date.startsWith(thisMonth),
+    c.date.startsWith(thisMonth)
   ).length;
 
   const handleCheckIn = () => {
@@ -4129,7 +4047,6 @@ function MemberPortal({
     toast("✓ Checked in — thank you for serving!");
   };
 
-  // ── Journey data ─────────────────────────────────────────────────────────
   const currentStageIdx = member?.currentStageIndex ?? 0;
   const currentStage = stages[currentStageIdx];
   const isLastStage = currentStageIdx >= stages.length - 1;
@@ -4141,18 +4058,12 @@ function MemberPortal({
   const overallProgress =
     stages.length > 0
       ? Math.round(
-          ((currentStageIdx + stageProgress / 100) / stages.length) * 100,
+          ((currentStageIdx + stageProgress / 100) / stages.length) * 100
         )
       : 0;
 
   const faithLabel = (f) =>
-    ({
-      born_again: "Born Again",
-      not_born_again: "Not Born Again",
-      visitor: "Visitor",
-    })[f] ??
-    f ??
-    "—";
+    ({ born_again: "Born Again", not_born_again: "Not Born Again", visitor: "Visitor" }[f] ?? f ?? "—");
 
   const stageKey = member?.enrollmentStage ?? "new_applicant";
   const STATUS_INFO = {
@@ -4183,7 +4094,6 @@ function MemberPortal({
   };
   const si = STATUS_INFO[stageKey] ?? STATUS_INFO.new_applicant;
 
-  // ── Bottom nav items ──────────────────────────────────────────────────────
   const navItems = [
     { id: "journey", icon: "explore", label: "Journey" },
     { id: "events", icon: "event", label: "Events" },
@@ -4194,27 +4104,18 @@ function MemberPortal({
     { id: "contact", icon: "mail", label: "Contact" },
   ];
 
-  // ── No member record ──────────────────────────────────────────────────────
   if (!member) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center px-4">
         <div className="text-center">
           <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center mb-6 mx-auto">
-            <span className="material-symbols-outlined text-outline text-3xl">
-              person_off
-            </span>
+            <span className="material-symbols-outlined text-outline text-3xl">person_off</span>
           </div>
-          <h2 className="text-xl font-extrabold font-headline text-on-surface mb-2">
-            Profile Not Found
-          </h2>
+          <h2 className="text-xl font-extrabold font-headline text-on-surface mb-2">Profile Not Found</h2>
           <p className="text-on-surface-variant text-sm max-w-xs mb-6">
-            Your account is not linked to a member record yet. Please contact
-            your administrator.
+            Your account is not linked to a member record yet. Please contact your administrator.
           </p>
-          <button
-            onClick={onLogout}
-            className="text-sm font-semibold text-primary hover:underline"
-          >
+          <button onClick={onLogout} className="text-sm font-semibold text-primary hover:underline">
             Sign Out
           </button>
         </div>
@@ -4222,31 +4123,20 @@ function MemberPortal({
     );
   }
 
-  // ── Full portal ───────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-surface flex flex-col">
+
       {/* ── Sticky header ── */}
       <header className="bg-surface-container-lowest border-b border-outline-variant/10 px-4 py-3 flex items-center gap-3 sticky top-0 z-40 shadow-sm">
         <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-on-primary flex-shrink-0">
-          <span className="material-symbols-outlined ms-filled text-base">
-            church
-          </span>
+          <span className="material-symbols-outlined ms-filled text-base">church</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-extrabold text-on-surface font-headline truncate">
-            ChurchOS
-          </p>
-          <p className="text-[9px] uppercase tracking-widest text-outline font-bold">
-            Member Portal
-          </p>
+          <p className="text-sm font-extrabold text-on-surface font-headline truncate">ChurchOS</p>
+          <p className="text-[9px] uppercase tracking-widest text-outline font-bold">Member Portal</p>
         </div>
         <div className="flex items-center gap-2">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
-            style={{ background: member.avatarColor, color: "#515f74" }}
-          >
-            {member.initials}
-          </div>
+          <MemberAvatar member={member} size={32} ring />
           <button
             onClick={onLogout}
             className="p-2 text-outline-variant hover:text-error transition-colors rounded-full hover:bg-error-container/20"
@@ -4258,79 +4148,52 @@ function MemberPortal({
 
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto pb-24">
-        {/* ════════════════════════════════════════════════
+
+        {/* ══════════════════════════════════════════════
             JOURNEY TAB
-        ════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════ */}
         {activeTab === "journey" && (
           <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
             {/* Status hero card */}
-            <div
-              className={`rounded-2xl border-2 ${si.border} bg-gradient-to-br ${si.bg} to-surface-container-lowest p-5`}
-            >
+            <div className={`rounded-2xl border-2 ${si.border} bg-gradient-to-br ${si.bg} to-surface-container-lowest p-5`}>
               <div className="flex items-start gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl bg-white/70 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <span
-                    className={`material-symbols-outlined ms-filled text-2xl ${si.color}`}
-                  >
-                    {si.icon}
-                  </span>
+                  <span className={`material-symbols-outlined ms-filled text-2xl ${si.color}`}>{si.icon}</span>
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-0.5">
-                    Welcome back
-                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-0.5">Welcome back</p>
                   <h2 className="text-xl font-extrabold font-headline text-on-surface leading-tight">
                     {member.name.split(" ")[0]}'s Journey
                   </h2>
-                  <span
-                    className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${si.color} bg-white/60`}
-                  >
+                  <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${si.color} bg-white/60`}>
                     {si.label}
                   </span>
                 </div>
               </div>
-
               <p className="text-xs text-on-surface-variant leading-relaxed mb-4 bg-white/50 rounded-xl px-4 py-2.5">
                 {si.msg}
               </p>
-
-              {/* Overall progress bar */}
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-on-surface-variant">
-                    Overall Blueprint Progress
-                  </span>
-                  <span className="text-primary font-bold">
-                    {overallProgress}%
-                  </span>
+                  <span className="text-on-surface-variant">Overall Blueprint Progress</span>
+                  <span className="text-primary font-bold">{overallProgress}%</span>
                 </div>
                 <div className="w-full h-3 bg-white/50 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-700 shadow-sm"
-                    style={{
-                      width: `${overallProgress}%`,
-                      background: "rgb(var(--c-primary))",
-                    }}
+                    style={{ width: `${overallProgress}%`, background: "rgb(var(--c-primary))" }}
                   />
                 </div>
               </div>
-
-              {/* Stage pills */}
               <div className="flex gap-1.5 flex-wrap mt-4">
                 {stages.map((s, i) => {
                   const done = i < currentStageIdx;
                   const active = i === currentStageIdx;
                   return (
-                    <span
-                      key={s.id}
+                    <span key={s.id}
                       className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                        done
-                          ? "bg-green-500 text-white"
-                          : active
-                            ? "bg-primary text-on-primary shadow-sm"
-                            : "bg-white/40 text-outline-variant"
-                      }`}
-                    >
+                        done ? "bg-green-500 text-white" : active ? "bg-primary text-on-primary shadow-sm" : "bg-white/40 text-outline-variant"
+                      }`}>
                       <span className="material-symbols-outlined text-xs ms-filled">
                         {done ? "check" : active ? s.icon : "lock"}
                       </span>
@@ -4343,133 +4206,73 @@ function MemberPortal({
 
             {/* Completed stages */}
             {stages.slice(0, currentStageIdx).map((s) => (
-              <div
-                key={s.id}
-                className="bg-surface-container-lowest rounded-xl border border-green-100 p-4 flex items-center gap-4"
-              >
+              <div key={s.id} className="bg-surface-container-lowest rounded-xl border border-green-100 p-4 flex items-center gap-4">
                 <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-green-600 ms-filled text-xl">
-                    check_circle
-                  </span>
+                  <span className="material-symbols-outlined text-green-600 ms-filled text-xl">check_circle</span>
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-bold text-on-surface">{s.name}</p>
-                  <p className="text-xs text-green-600 font-semibold">
-                    Stage completed
-                  </p>
+                  <p className="text-xs text-green-600 font-semibold">Stage completed</p>
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
-                  Done
-                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 bg-green-100 px-2.5 py-1 rounded-full">Done</span>
               </div>
             ))}
 
             {/* Current stage */}
             {currentStage && (
               <div className="bg-surface-container-lowest rounded-2xl border-2 border-primary/20 overflow-hidden shadow-sm">
-                {/* Stage header */}
                 <div className="bg-primary-container/30 px-5 py-4 flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-primary flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <span className="material-symbols-outlined text-on-primary text-xl ms-filled">
-                      {currentStage.icon}
-                    </span>
+                    <span className="material-symbols-outlined text-on-primary text-xl ms-filled">{currentStage.icon}</span>
                   </div>
                   <div className="flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary">
-                      Current Stage
-                    </p>
-                    <h3 className="text-base font-extrabold font-headline text-on-surface">
-                      {currentStage.name}
-                    </h3>
-                    <p className="text-xs text-on-surface-variant">
-                      {currentStage.description}
-                    </p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Current Stage</p>
+                    <h3 className="text-base font-extrabold font-headline text-on-surface">{currentStage.name}</h3>
+                    <p className="text-xs text-on-surface-variant">{currentStage.description}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-2xl font-extrabold font-headline text-primary">
-                      {stageProgress}%
-                    </p>
-                    <p className="text-[10px] text-on-surface-variant">
-                      {completedTasks}/{totalTasks} tasks
-                    </p>
+                    <p className="text-2xl font-extrabold font-headline text-primary">{stageProgress}%</p>
+                    <p className="text-[10px] text-on-surface-variant">{completedTasks}/{totalTasks} tasks</p>
                   </div>
                 </div>
-
-                {/* Progress bar */}
                 <div className="px-5 pt-4">
                   <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-500"
-                      style={{ width: `${stageProgress}%` }}
-                    />
+                    <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${stageProgress}%` }} />
                   </div>
                 </div>
-
-                {/* Tasks */}
                 <div className="px-5 py-4 space-y-2">
                   {(currentStage.requirements || []).map((task, i) => {
                     const done = activeTasks[i] === true;
                     return (
-                      <div
-                        key={i}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl ${done ? "bg-green-50 border border-green-100" : "bg-surface-container-low"}`}
-                      >
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-green-500" : "border-2 border-outline-variant/30 bg-white"}`}
-                        >
-                          {done && (
-                            <span className="material-symbols-outlined text-white text-xs ms-filled">
-                              check
-                            </span>
-                          )}
+                      <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl ${done ? "bg-green-50 border border-green-100" : "bg-surface-container-low"}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-green-500" : "border-2 border-outline-variant/30 bg-white"}`}>
+                          {done && <span className="material-symbols-outlined text-white text-xs ms-filled">check</span>}
                         </div>
-                        <span
-                          className={`text-sm flex-1 ${done ? "line-through text-green-700 opacity-70" : "text-on-surface font-medium"}`}
-                        >
-                          {task}
-                        </span>
-                        {done && (
-                          <span className="text-[10px] font-bold text-green-600 uppercase">
-                            Done
-                          </span>
-                        )}
+                        <span className={`text-sm flex-1 ${done ? "line-through text-green-700 opacity-70" : "text-on-surface font-medium"}`}>{task}</span>
+                        {done && <span className="text-[10px] font-bold text-green-600 uppercase">Done</span>}
                       </div>
                     );
                   })}
                 </div>
-
-                {/* Status message */}
                 <div className="px-5 pb-5">
                   {stageProgress < 100 ? (
                     <div className="bg-primary-container/20 rounded-xl px-4 py-3">
                       <p className="text-xs text-primary font-semibold flex items-start gap-2">
-                        <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">
-                          info
-                        </span>
-                        Complete all tasks to advance. Your pastor or mentor can
-                        help — don't hesitate to reach out!
+                        <span className="material-symbols-outlined text-sm flex-shrink-0 mt-0.5">info</span>
+                        Complete all tasks to advance. Your pastor or mentor can help — don't hesitate to reach out!
                       </p>
                     </div>
                   ) : isLastStage ? (
                     <div className="bg-green-50 rounded-xl px-4 py-3 text-center">
-                      <span className="material-symbols-outlined text-green-500 ms-filled text-2xl block mb-1">
-                        verified
-                      </span>
-                      <p className="text-green-700 font-bold text-sm">
-                        Blueprint Complete!
-                      </p>
-                      <p className="text-xs text-green-600 mt-0.5">
-                        You have completed your full discipleship journey.
-                      </p>
+                      <span className="material-symbols-outlined text-green-500 ms-filled text-2xl block mb-1">verified</span>
+                      <p className="text-green-700 font-bold text-sm">Blueprint Complete!</p>
+                      <p className="text-xs text-green-600 mt-0.5">You have completed your full discipleship journey.</p>
                     </div>
                   ) : (
                     <div className="bg-green-50 rounded-xl px-4 py-3">
                       <p className="text-xs text-green-700 font-semibold flex items-center gap-2">
-                        <span className="material-symbols-outlined text-sm ms-filled">
-                          celebration
-                        </span>
-                        All tasks complete! Your pastor will advance you to the
-                        next stage soon.
+                        <span className="material-symbols-outlined text-sm ms-filled">celebration</span>
+                        All tasks complete! Your pastor will advance you to the next stage soon.
                       </p>
                     </div>
                   )}
@@ -4477,22 +4280,15 @@ function MemberPortal({
               </div>
             )}
 
-            {/* Upcoming (locked) stages */}
+            {/* Locked upcoming stages */}
             {stages.slice(currentStageIdx + 1).map((s) => (
-              <div
-                key={s.id}
-                className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-4 flex items-center gap-4 opacity-40"
-              >
+              <div key={s.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-4 flex items-center gap-4 opacity-40">
                 <div className="w-11 h-11 rounded-full bg-surface-container flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-outline">
-                    lock
-                  </span>
+                  <span className="material-symbols-outlined text-outline">lock</span>
                 </div>
                 <div>
                   <p className="text-sm font-bold text-on-surface">{s.name}</p>
-                  <p className="text-xs text-on-surface-variant">
-                    Complete your current stage to unlock
-                  </p>
+                  <p className="text-xs text-on-surface-variant">Complete your current stage to unlock</p>
                 </div>
               </div>
             ))}
@@ -4501,100 +4297,60 @@ function MemberPortal({
             {member.mentor && (
               <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-container/40 flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-primary ms-filled">
-                    person_pin
-                  </span>
+                  <span className="material-symbols-outlined text-primary ms-filled">person_pin</span>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline">
-                    Your Mentor
-                  </p>
-                  <p className="text-sm font-bold text-on-surface">
-                    {member.mentor}
-                  </p>
-                  <p className="text-xs text-on-surface-variant">
-                    Reach out if you need guidance on your journey
-                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Your Mentor</p>
+                  <p className="text-sm font-bold text-on-surface">{member.mentor}</p>
+                  <p className="text-xs text-on-surface-variant">Reach out if you need guidance on your journey</p>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════
             EVENTS TAB
-        ════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════ */}
         {activeTab === "events" && (
           <div className="p-4 max-w-lg mx-auto space-y-5 fade-in">
             <div>
-              <h2 className="text-xl font-extrabold font-headline text-on-surface">
-                Upcoming Events
-              </h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">
-                RSVP to events and keep track of what's on.
-              </p>
+              <h2 className="text-xl font-extrabold font-headline text-on-surface">Upcoming Events</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">RSVP to events and keep track of what's on.</p>
             </div>
 
-            {/* My confirmed RSVPs */}
             {myRsvps.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
                   My RSVPs{" "}
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-[9px]">
-                    {myRsvps.length}
-                  </span>
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-[9px]">{myRsvps.length}</span>
                 </p>
                 <div className="space-y-2">
                   {myRsvps.map((evt) => {
-                    const cat =
-                      CATEGORY_META[evt.category] ?? CATEGORY_META.service;
+                    const cat = CATEGORY_META[evt.category] ?? CATEGORY_META.service;
                     const d = new Date(evt.date);
                     return (
-                      <div
-                        key={evt.id}
-                        className="bg-surface-container-lowest rounded-xl border border-primary/15 p-4 flex items-center gap-3 shadow-sm"
-                      >
-                        <div
-                          className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cat.bg}`}
-                        >
-                          <span
-                            className={`text-[10px] font-bold uppercase ${cat.text}`}
-                          >
-                            {d.toLocaleString("default", { month: "short" })}
-                          </span>
-                          <span
-                            className={`text-xl font-extrabold leading-none ${cat.text}`}
-                          >
-                            {d.getDate()}
-                          </span>
+                      <div key={evt.id} className="bg-surface-container-lowest rounded-xl border border-primary/15 p-4 flex items-center gap-3 shadow-sm">
+                        <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cat.bg}`}>
+                          <span className={`text-[10px] font-bold uppercase ${cat.text}`}>{d.toLocaleString("default", { month: "short" })}</span>
+                          <span className={`text-xl font-extrabold leading-none ${cat.text}`}>{d.getDate()}</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-on-surface truncate">
-                            {evt.title}
-                          </p>
+                          <p className="text-sm font-bold text-on-surface truncate">{evt.title}</p>
                           <p className="text-xs text-on-surface-variant flex items-center gap-2 mt-0.5 flex-wrap">
                             <span className="flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-xs">
-                                schedule
-                              </span>
-                              {evt.startTime}
+                              <span className="material-symbols-outlined text-xs">schedule</span>{evt.startTime}
                             </span>
                             {evt.location && (
                               <span className="flex items-center gap-0.5">
-                                <span className="material-symbols-outlined text-xs">
-                                  location_on
-                                </span>
-                                <span className="truncate max-w-[120px]">
-                                  {evt.location}
-                                </span>
+                                <span className="material-symbols-outlined text-xs">location_on</span>
+                                <span className="truncate max-w-[120px]">{evt.location}</span>
                               </span>
                             )}
                           </p>
                         </div>
-                        <button
-                          onClick={() => handleRsvp(evt.id)}
-                          className="flex-shrink-0 text-xs font-bold text-error hover:text-error/70 transition-colors px-2 py-1 rounded-lg hover:bg-error-container/10"
-                        >
+                        <button onClick={() => handleRsvp(evt.id)}
+                          className="flex-shrink-0 text-xs font-bold text-error hover:text-error/70 transition-colors px-2 py-1 rounded-lg hover:bg-error-container/10">
                           Remove
                         </button>
                       </div>
@@ -4604,128 +4360,66 @@ function MemberPortal({
               </div>
             )}
 
-            {/* All upcoming events */}
             <div>
               {myRsvps.length > 0 && (
-                <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
-                  All Events
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">All Events</p>
               )}
               {upcomingEvents.length === 0 ? (
                 <div className="text-center py-12 text-on-surface-variant bg-surface-container-lowest rounded-2xl border border-outline-variant/5">
-                  <span className="material-symbols-outlined text-4xl mb-3 block text-outline-variant">
-                    event_busy
-                  </span>
+                  <span className="material-symbols-outlined text-4xl mb-3 block text-outline-variant">event_busy</span>
                   <p className="font-semibold text-sm">No upcoming events</p>
-                  <p className="text-xs mt-1 opacity-70">
-                    Check back soon for new events.
-                  </p>
+                  <p className="text-xs mt-1 opacity-70">Check back soon for new events.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {upcomingEvents.map((evt) => {
-                    const cat =
-                      CATEGORY_META[evt.category] ?? CATEGORY_META.service;
+                    const cat = CATEGORY_META[evt.category] ?? CATEGORY_META.service;
                     const hasRsvp = evt.rsvpIds?.includes(member.id);
                     const d = new Date(evt.date);
-                    const days = [
-                      "Sun",
-                      "Mon",
-                      "Tue",
-                      "Wed",
-                      "Thu",
-                      "Fri",
-                      "Sat",
-                    ];
+                    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
                     return (
-                      <div
-                        key={evt.id}
-                        className={`bg-surface-container-lowest rounded-2xl border-2 transition-all ${hasRsvp ? "border-primary/20 shadow-md" : "border-outline-variant/10 hover:border-outline-variant/30"} overflow-hidden`}
-                      >
+                      <div key={evt.id}
+                        className={`bg-surface-container-lowest rounded-2xl border-2 transition-all ${hasRsvp ? "border-primary/20 shadow-md" : "border-outline-variant/10 hover:border-outline-variant/30"} overflow-hidden`}>
                         <div className="p-4 flex gap-3">
-                          {/* Date block */}
-                          <div
-                            className={`w-14 h-16 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cat.bg} gap-0.5`}
-                          >
-                            <span
-                              className={`text-[9px] font-bold uppercase ${cat.text}`}
-                            >
-                              {days[d.getDay()]}
-                            </span>
-                            <span
-                              className={`text-2xl font-extrabold leading-none ${cat.text}`}
-                            >
-                              {d.getDate()}
-                            </span>
-                            <span
-                              className={`text-[9px] font-bold uppercase ${cat.text}`}
-                            >
-                              {d.toLocaleString("default", { month: "short" })}
-                            </span>
+                          <div className={`w-14 h-16 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${cat.bg} gap-0.5`}>
+                            <span className={`text-[9px] font-bold uppercase ${cat.text}`}>{days[d.getDay()]}</span>
+                            <span className={`text-2xl font-extrabold leading-none ${cat.text}`}>{d.getDate()}</span>
+                            <span className={`text-[9px] font-bold uppercase ${cat.text}`}>{d.toLocaleString("default", { month: "short" })}</span>
                           </div>
-
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-bold text-on-surface leading-tight">
-                                {evt.title}
-                              </p>
+                              <p className="text-sm font-bold text-on-surface leading-tight">{evt.title}</p>
                               {hasRsvp && (
                                 <span className="flex-shrink-0 flex items-center gap-0.5 text-[10px] font-bold text-primary bg-primary-container/40 px-2 py-0.5 rounded-full">
-                                  <span className="material-symbols-outlined text-xs ms-filled">
-                                    check_circle
-                                  </span>
-                                  RSVP'd
+                                  <span className="material-symbols-outlined text-xs ms-filled">check_circle</span>RSVP'd
                                 </span>
                               )}
                             </div>
-
                             {evt.description && (
-                              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed line-clamp-2">
-                                {evt.description}
-                              </p>
+                              <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed line-clamp-2">{evt.description}</p>
                             )}
-
                             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-on-surface-variant">
                               {evt.startTime && (
                                 <span className="flex items-center gap-0.5">
-                                  <span className="material-symbols-outlined text-xs">
-                                    schedule
-                                  </span>
-                                  {evt.startTime}
-                                  {evt.endTime ? ` – ${evt.endTime}` : ""}
+                                  <span className="material-symbols-outlined text-xs">schedule</span>
+                                  {evt.startTime}{evt.endTime ? ` – ${evt.endTime}` : ""}
                                 </span>
                               )}
                               {evt.location && (
                                 <span className="flex items-center gap-0.5">
-                                  <span className="material-symbols-outlined text-xs">
-                                    location_on
-                                  </span>
-                                  <span className="line-clamp-1">
-                                    {evt.location}
-                                  </span>
+                                  <span className="material-symbols-outlined text-xs">location_on</span>
+                                  <span className="line-clamp-1">{evt.location}</span>
                                 </span>
                               )}
                             </div>
                           </div>
                         </div>
-
-                        {/* RSVP button row */}
-                        <div
-                          className={`px-4 py-3 border-t flex items-center justify-between ${hasRsvp ? "border-primary/10 bg-primary-container/10" : "border-outline-variant/10 bg-surface-container-low/50"}`}
-                        >
+                        <div className={`px-4 py-3 border-t flex items-center justify-between ${hasRsvp ? "border-primary/10 bg-primary-container/10" : "border-outline-variant/10 bg-surface-container-low/50"}`}>
                           <p className="text-xs text-on-surface-variant">
-                            {evt.rsvpIds?.length ?? 0}{" "}
-                            {evt.rsvpIds?.length === 1 ? "person" : "people"}{" "}
-                            going
+                            {evt.rsvpIds?.length ?? 0}{" "}{evt.rsvpIds?.length === 1 ? "person" : "people"} going
                           </p>
-                          <button
-                            onClick={() => handleRsvp(evt.id)}
-                            className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${
-                              hasRsvp
-                                ? "bg-error-container/20 text-error hover:bg-error-container/30"
-                                : "bg-primary text-on-primary hover:bg-primary-dim shadow-sm"
-                            }`}
-                          >
+                          <button onClick={() => handleRsvp(evt.id)}
+                            className={`px-5 py-2 rounded-lg text-xs font-bold transition-all ${hasRsvp ? "bg-error-container/20 text-error hover:bg-error-container/30" : "bg-primary text-on-primary hover:bg-primary-dim shadow-sm"}`}>
                             {hasRsvp ? "✕ Cancel RSVP" : "+ RSVP Now"}
                           </button>
                         </div>
@@ -4738,164 +4432,89 @@ function MemberPortal({
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════
-            CHECK IN TAB (serving team members only)
-        ════════════════════════════════════════════════ */}
+        {/* ══════════════════════════════════════════════
+            CHECK IN TAB
+        ══════════════════════════════════════════════ */}
         {activeTab === "checkin" && isServingMember && (
           <div className="p-4 max-w-lg mx-auto space-y-5 fade-in">
             <div>
-              <h2 className="text-xl font-extrabold font-headline text-on-surface">
-                Team Check In
-              </h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">
-                Log your attendance for today's service or event.
-              </p>
+              <h2 className="text-xl font-extrabold font-headline text-on-surface">Team Check In</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">Log your attendance for today's service or event.</p>
             </div>
-
-            {/* Today's check-in */}
-            <div
-              className={`rounded-2xl border-2 p-5 ${checkedInToday ? "border-green-200 bg-green-50" : "border-primary/20 bg-primary-container/10"}`}
-            >
+            <div className={`rounded-2xl border-2 p-5 ${checkedInToday ? "border-green-200 bg-green-50" : "border-primary/20 bg-primary-container/10"}`}>
               <div className="flex items-center gap-3 mb-4">
-                <div
-                  className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${checkedInToday ? "bg-green-500" : "bg-primary"}`}
-                >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${checkedInToday ? "bg-green-500" : "bg-primary"}`}>
                   <span className="material-symbols-outlined text-white ms-filled text-xl">
                     {checkedInToday ? "task_alt" : "how_to_reg"}
                   </span>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline">
-                    Today
-                  </p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Today</p>
                   <p className="text-base font-extrabold font-headline text-on-surface">
-                    {new Date().toLocaleDateString("en-ZA", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
+                    {new Date().toLocaleDateString("en-ZA", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
                   </p>
                 </div>
               </div>
-
               {checkedInToday ? (
                 <div className="text-center py-4">
-                  <span className="material-symbols-outlined text-green-500 text-5xl ms-filled block mb-2">
-                    verified
-                  </span>
-                  <p className="text-green-700 font-extrabold font-headline text-lg">
-                    You're checked in!
-                  </p>
-                  <p className="text-green-600 text-sm mt-1 font-medium">
-                    {checkIns[0]?.service} · {checkIns[0]?.time}
-                  </p>
-                  <p className="text-xs text-green-600/70 mt-2">
-                    Thank you for serving your community today 🙏
-                  </p>
+                  <span className="material-symbols-outlined text-green-500 text-5xl ms-filled block mb-2">verified</span>
+                  <p className="text-green-700 font-extrabold font-headline text-lg">You're checked in!</p>
+                  <p className="text-green-600 text-sm mt-1 font-medium">{checkIns[0]?.service} · {checkIns[0]?.time}</p>
+                  <p className="text-xs text-green-600/70 mt-2">Thank you for serving your community today 🙏</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">
-                      Select Service / Event
-                    </p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Select Service / Event</p>
                     <div className="space-y-2">
                       {SERVICES.map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setSelectedService(s)}
-                          className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
-                            selectedService === s
-                              ? "border-primary bg-primary-container/30 text-primary"
-                              : "border-outline-variant/20 bg-white text-on-surface-variant hover:border-primary/30"
-                          }`}
-                        >
+                        <button key={s} onClick={() => setSelectedService(s)}
+                          className={`w-full text-left px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${selectedService === s ? "border-primary bg-primary-container/30 text-primary" : "border-outline-variant/20 bg-white text-on-surface-variant hover:border-primary/30"}`}>
                           <span className="flex items-center gap-2">
-                            {selectedService === s && (
-                              <span className="material-symbols-outlined text-sm ms-filled">
-                                check_circle
-                              </span>
-                            )}
+                            {selectedService === s && <span className="material-symbols-outlined text-sm ms-filled">check_circle</span>}
                             {s}
                           </span>
                         </button>
                       ))}
                     </div>
                   </div>
-                  <button
-                    onClick={handleCheckIn}
-                    className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-sm hover:bg-primary-dim transition-all flex items-center justify-center gap-2 text-sm mt-2"
-                  >
-                    <span className="material-symbols-outlined ms-filled">
-                      how_to_reg
-                    </span>
+                  <button onClick={handleCheckIn}
+                    className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-sm hover:bg-primary-dim transition-all flex items-center justify-center gap-2 text-sm mt-2">
+                    <span className="material-symbols-outlined ms-filled">how_to_reg</span>
                     Check In Now
                   </button>
                 </div>
               )}
             </div>
-
-            {/* Stats row */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                {
-                  label: "This Month",
-                  value: checkInsThisMonth + (checkedInToday ? 1 : 0),
-                },
-                {
-                  label: "All Time",
-                  value: checkIns.length + (checkedInToday ? 1 : 0),
-                },
+                { label: "This Month", value: checkInsThisMonth + (checkedInToday ? 1 : 0) },
+                { label: "All Time", value: checkIns.length + (checkedInToday ? 1 : 0) },
                 { label: "Streak", value: "4 wks" },
               ].map((s) => (
-                <div
-                  key={s.label}
-                  className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-3 text-center"
-                >
-                  <p className="text-2xl font-extrabold font-headline text-primary">
-                    {s.value}
-                  </p>
-                  <p className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wide mt-0.5">
-                    {s.label}
-                  </p>
+                <div key={s.label} className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-3 text-center">
+                  <p className="text-2xl font-extrabold font-headline text-primary">{s.value}</p>
+                  <p className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wide mt-0.5">{s.label}</p>
                 </div>
               ))}
             </div>
-
-            {/* History */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
-                Recent History
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Recent History</p>
               <div className="space-y-2">
                 {checkIns.map((ci) => {
                   const d = new Date(ci.date);
                   return (
-                    <div
-                      key={ci.id}
-                      className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 px-4 py-3 flex items-center gap-3"
-                    >
+                    <div key={ci.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 px-4 py-3 flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <span className="material-symbols-outlined text-green-600 ms-filled text-sm">
-                          check
-                        </span>
+                        <span className="material-symbols-outlined text-green-600 ms-filled text-sm">check</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-on-surface truncate">
-                          {ci.service}
-                        </p>
+                        <p className="text-sm font-semibold text-on-surface truncate">{ci.service}</p>
                         <p className="text-xs text-on-surface-variant">
-                          {d.toLocaleDateString("en-ZA", {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                          })}
+                          {d.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short" })}
                         </p>
                       </div>
-                      <span className="text-xs font-bold text-on-surface-variant flex-shrink-0">
-                        {ci.time}
-                      </span>
+                      <span className="text-xs font-bold text-on-surface-variant flex-shrink-0">{ci.time}</span>
                     </div>
                   );
                 })}
@@ -4904,47 +4523,85 @@ function MemberPortal({
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════
             MY INFO TAB
-        ════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════ */}
         {activeTab === "info" && (
           <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
             <div>
-              <h2 className="text-xl font-extrabold font-headline text-on-surface">
-                My Info
-              </h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">
-                Your personal details on file with the church.
-              </p>
+              <h2 className="text-xl font-extrabold font-headline text-on-surface">My Info</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">Your personal details on file with the church.</p>
             </div>
 
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
-              <div className="px-5 py-4 border-b border-surface-container flex items-center justify-between">
-                <h3 className="text-sm font-bold font-headline">
-                  Your Details
-                </h3>
-                {!editing && (
-                  <button
-                    onClick={openEdit}
-                    className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      edit
-                    </span>
-                    Edit
-                  </button>
-                )}
+
+              {/* Photo + name header */}
+              <div className="px-5 pt-5 pb-4 border-b border-surface-container">
+                <div className="flex items-center gap-4">
+                  {/* Avatar */}
+                  <div className="rounded-full overflow-hidden ring-4 ring-surface-container-low flex-shrink-0">
+                    <MemberAvatar member={member} size={64} />
+                  </div>
+
+                  {/* Name + upload controls */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-on-surface truncate">{member.name}</p>
+                    <label className="mt-1.5 cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+                      <span className="material-symbols-outlined text-sm">photo_camera</span>
+                      {member.avatarUrl ? "Change Photo" : "Upload Photo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) =>
+                            setMembers((prev) =>
+                              prev.map((m) =>
+                                m.id === member.id ? { ...m, avatarUrl: ev.target.result } : m
+                              )
+                            );
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                    {member.avatarUrl && (
+                      <button
+                        onClick={() =>
+                          setMembers((prev) =>
+                            prev.map((m) =>
+                              m.id === member.id ? { ...m, avatarUrl: null } : m
+                            )
+                          )
+                        }
+                        className="block text-xs text-error hover:underline mt-0.5"
+                      >
+                        Remove photo
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Edit button */}
+                  {!editing && (
+                    <button
+                      onClick={openEdit}
+                      className="flex items-center gap-1 text-xs font-bold text-primary hover:underline self-start flex-shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-sm">edit</span>Edit
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {/* Edit form / read-only fields */}
               {editing ? (
                 <div className="px-5 py-5 space-y-4">
                   <div className="bg-primary-container/20 rounded-lg px-4 py-2.5">
                     <p className="text-xs text-primary font-semibold flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm">
-                        info
-                      </span>
-                      You can update your contact details. Other fields are
-                      managed by your church administrator.
+                      <span className="material-symbols-outlined text-sm">info</span>
+                      You can update your contact details. Other fields are managed by your church administrator.
                     </p>
                   </div>
                   {[
@@ -4953,9 +4610,7 @@ function MemberPortal({
                     { label: "Home Address", key: "homeAddress", type: "text" },
                   ].map((fi) => (
                     <div key={fi.key}>
-                      <label className="text-[10px] uppercase font-bold tracking-widest text-outline mb-1.5 block">
-                        {fi.label}
-                      </label>
+                      <label className="text-[10px] uppercase font-bold tracking-widest text-outline mb-1.5 block">{fi.label}</label>
                       <input
                         type={fi.type}
                         value={draft[fi.key] ?? ""}
@@ -4984,33 +4639,19 @@ function MemberPortal({
                   <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                     {[
                       { label: "Full Name", value: member.name },
-                      {
-                        label: "Faith Status",
-                        value: faithLabel(member.faithStatus),
-                      },
+                      { label: "Faith Status", value: faithLabel(member.faithStatus) },
                       { label: "Phone", value: member.phone },
                       { label: "Email", value: member.email },
                       { label: "Marital Status", value: member.maritalStatus },
                       { label: "Group", value: member.group || "Not assigned" },
                       { label: "Joined", value: member.joinDate },
-                      {
-                        label: "Address",
-                        value: member.homeAddress,
-                        span: true,
-                      },
+                      { label: "Address", value: member.homeAddress, span: true },
                     ]
                       .filter((fi) => fi?.value)
                       .map((fi) => (
-                        <div
-                          key={fi.label}
-                          className={fi.span ? "col-span-2" : ""}
-                        >
-                          <p className="text-[10px] uppercase font-bold tracking-widest text-outline mb-0.5">
-                            {fi.label}
-                          </p>
-                          <p className="text-sm text-on-surface font-medium">
-                            {fi.value || "—"}
-                          </p>
+                        <div key={fi.label} className={fi.span ? "col-span-2" : ""}>
+                          <p className="text-[10px] uppercase font-bold tracking-widest text-outline mb-0.5">{fi.label}</p>
+                          <p className="text-sm text-on-surface font-medium">{fi.value || "—"}</p>
                         </div>
                       ))}
                   </div>
@@ -5020,9 +4661,7 @@ function MemberPortal({
 
             {/* Blueprint snapshot */}
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
-                Blueprint Summary
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Blueprint Summary</p>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
                   <div className="flex justify-between text-xs font-semibold mb-1.5">
@@ -5030,44 +4669,30 @@ function MemberPortal({
                     <span className="text-primary">{overallProgress}%</span>
                   </div>
                   <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full"
-                      style={{ width: `${overallProgress}%` }}
-                    />
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${overallProgress}%` }} />
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-base font-extrabold font-headline text-primary">
-                    {currentStage?.name ?? "—"}
-                  </p>
-                  <p className="text-[10px] text-on-surface-variant">
-                    Current Stage
-                  </p>
+                  <p className="text-base font-extrabold font-headline text-primary">{currentStage?.name ?? "—"}</p>
+                  <p className="text-[10px] text-on-surface-variant">Current Stage</p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════
             CONTACT TAB
-        ════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════ */}
         {activeTab === "contact" && (
           <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
             <div>
-              <h2 className="text-xl font-extrabold font-headline text-on-surface">
-                Get in Touch
-              </h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">
-                Send a message directly to your church administrator.
-              </p>
+              <h2 className="text-xl font-extrabold font-headline text-on-surface">Get in Touch</h2>
+              <p className="text-xs text-on-surface-variant mt-0.5">Send a message directly to your church administrator.</p>
             </div>
-
             <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
               <div className="px-5 py-4 border-b border-surface-container">
-                <h3 className="text-sm font-bold font-headline">
-                  Message Admin
-                </h3>
+                <h3 className="text-sm font-bold font-headline">Message Admin</h3>
               </div>
               <div className="px-5 py-5 space-y-4">
                 <textarea
@@ -5080,12 +4705,8 @@ function MemberPortal({
                 />
                 {msgSent && (
                   <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-xl border border-green-200">
-                    <span className="material-symbols-outlined text-green-600 ms-filled text-sm">
-                      check_circle
-                    </span>
-                    <p className="text-xs text-green-700 font-semibold">
-                      Sent! Your administrator will be in touch soon.
-                    </p>
+                    <span className="material-symbols-outlined text-green-600 ms-filled text-sm">check_circle</span>
+                    <p className="text-xs text-green-700 font-semibold">Sent! Your administrator will be in touch soon.</p>
                   </div>
                 )}
                 <button
@@ -5093,42 +4714,21 @@ function MemberPortal({
                   disabled={!message.trim() || msgSent}
                   className={`w-full py-3.5 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${message.trim() && !msgSent ? "bg-primary text-on-primary hover:bg-primary-dim shadow-sm" : "bg-surface-container-high text-outline cursor-not-allowed"}`}
                 >
-                  <span className="material-symbols-outlined text-sm">
-                    send
-                  </span>
-                  Send Message
+                  <span className="material-symbols-outlined text-sm">send</span>Send Message
                 </button>
               </div>
             </div>
-
-            {/* Quick contacts */}
             <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">
-                Church Contacts
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Church Contacts</p>
               {[
-                {
-                  label: "Lead Pastor",
-                  value: "pastor@church.org",
-                  icon: "church",
-                },
-                {
-                  label: "Admin Office",
-                  value: "admin@church.org",
-                  icon: "mail",
-                },
+                { label: "Lead Pastor", value: "pastor@church.org", icon: "church" },
+                { label: "Admin Office", value: "admin@church.org", icon: "mail" },
               ].map((c) => (
                 <div key={c.label} className="flex items-center gap-3 py-2">
-                  <span className="material-symbols-outlined text-primary text-sm">
-                    {c.icon}
-                  </span>
+                  <span className="material-symbols-outlined text-primary text-sm">{c.icon}</span>
                   <div>
-                    <p className="text-[10px] text-outline uppercase font-bold tracking-wider">
-                      {c.label}
-                    </p>
-                    <p className="text-sm text-on-surface font-medium">
-                      {c.value}
-                    </p>
+                    <p className="text-[10px] text-outline uppercase font-bold tracking-wider">{c.label}</p>
+                    <p className="text-sm text-on-surface font-medium">{c.value}</p>
                   </div>
                 </div>
               ))}
@@ -5146,33 +4746,23 @@ function MemberPortal({
               onClick={() => setActiveTab(n.id)}
               className={`relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-all ${activeTab === n.id ? "text-primary" : "text-on-surface-variant"}`}
             >
-              {/* Active indicator pill */}
               {activeTab === n.id && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-full" />
               )}
-              <span
-                className={`material-symbols-outlined text-[22px] transition-all ${activeTab === n.id ? "ms-filled" : ""}`}
-              >
+              <span className={`material-symbols-outlined text-[22px] transition-all ${activeTab === n.id ? "ms-filled" : ""}`}>
                 {n.icon}
               </span>
-              <span
-                className={`text-[10px] font-bold transition-all ${activeTab === n.id ? "opacity-100" : "opacity-50"}`}
-              >
+              <span className={`text-[10px] font-bold transition-all ${activeTab === n.id ? "opacity-100" : "opacity-50"}`}>
                 {n.label}
               </span>
-              {/* Dot for unseen events */}
               {n.id === "events" &&
-                upcomingEvents.filter((e) => !e.rsvpIds?.includes(member.id))
-                  .length > 0 &&
+                upcomingEvents.filter((e) => !e.rsvpIds?.includes(member.id)).length > 0 &&
                 activeTab !== "events" && (
                   <div className="absolute top-2 right-[calc(50%-14px)] w-1.5 h-1.5 bg-primary rounded-full" />
                 )}
-              {/* Dot for check-in not done */}
-              {n.id === "checkin" &&
-                !checkedInToday &&
-                activeTab !== "checkin" && (
-                  <div className="absolute top-2 right-[calc(50%-14px)] w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                )}
+              {n.id === "checkin" && !checkedInToday && activeTab !== "checkin" && (
+                <div className="absolute top-2 right-[calc(50%-14px)] w-1.5 h-1.5 bg-amber-500 rounded-full" />
+              )}
             </button>
           ))}
         </div>
@@ -5180,6 +4770,7 @@ function MemberPortal({
     </div>
   );
 }
+
 
 function Unauthorized() {
   const { user } = useAuth();

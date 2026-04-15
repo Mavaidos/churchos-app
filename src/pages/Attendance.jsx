@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TopBar } from '../components/layout/TopBar';
 import { SmAvatar } from '../components/shared/Avatar';
+import { MemberAvatar } from '../components/shared/Avatar';
 
 export function Attendance({ members = [], groups = [] }) {
   const [selectedGroup, setSelectedGroup] = useState(groups[0]?.id ?? null);

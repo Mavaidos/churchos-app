@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MemberAvatar } from '../components/shared/Avatar';
 
 const CATEGORY_META = {
   service:   { bg: 'bg-primary-container/40',   text: 'text-primary',    icon: 'church',             label: 'Service'   },
@@ -9,12 +10,17 @@ const CATEGORY_META = {
   workshop:  { bg: 'bg-purple-100',             text: 'text-purple-700', icon: 'school',             label: 'Workshop'  },
 };
 
+// =============================================================================
+// RSVP DRAWER
+// =============================================================================
+
 function RSVPDrawer({ event, members, onClose }) {
   const rsvpMembers = members.filter(m => event.rsvpIds?.includes(m.id));
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-md mx-4 slide-in overflow-hidden flex flex-col max-h-[80vh]">
+
         {/* Header */}
         <div className="p-7 pb-5 border-b border-surface-container flex-shrink-0">
           <div className="flex justify-between items-start">
@@ -22,7 +28,9 @@ function RSVPDrawer({ event, members, onClose }) {
               <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">RSVP List</p>
               <h3 className="text-lg font-bold font-headline text-on-surface">{event.title}</h3>
               <p className="text-xs text-on-surface-variant mt-1">
-                {new Date(event.date).toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {new Date(event.date).toLocaleDateString('en-ZA', {
+                  weekday: 'long', day: 'numeric', month: 'long',
+                })}
                 {event.startTime ? ` · ${event.startTime}` : ''}
               </p>
             </div>
@@ -32,7 +40,7 @@ function RSVPDrawer({ event, members, onClose }) {
           </div>
 
           {/* Summary pill */}
-          <div className="flex items-center gap-3 mt-4">
+          <div className="flex items-center gap-3 mt-4 flex-wrap">
             <div className="flex items-center gap-2 px-4 py-2 bg-primary-container/30 rounded-xl">
               <span className="material-symbols-outlined text-primary text-sm ms-filled">how_to_reg</span>
               <span className="text-sm font-bold text-primary">{rsvpMembers.length} confirmed</span>
@@ -61,10 +69,8 @@ function RSVPDrawer({ event, members, onClose }) {
               {rsvpMembers.map(m => (
                 <div key={m.id}
                   className="flex items-center gap-3 px-4 py-3 bg-surface-container-low rounded-xl">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0"
-                    style={{ background: m.avatarColor, color: '#515f74' }}>
-                    {m.initials}
-                  </div>
+                  {/* ── Photo-aware avatar ── */}
+                  <MemberAvatar member={m} size={36} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-on-surface truncate">{m.name}</p>
                     <p className="text-xs text-on-surface-variant truncate">{m.group || 'No group'}</p>
@@ -89,10 +95,14 @@ function RSVPDrawer({ event, members, onClose }) {
   );
 }
 
+// =============================================================================
+// EVENT CARD
+// =============================================================================
+
 function EventCard({ event, members, onViewRsvp }) {
-  const d   = new Date(event.date);
-  const cat = CATEGORY_META[event.category] ?? CATEGORY_META.service;
-  const rsvpCount   = event.rsvpIds?.length ?? 0;
+  const d          = new Date(event.date);
+  const cat        = CATEGORY_META[event.category] ?? CATEGORY_META.service;
+  const rsvpCount  = event.rsvpIds?.length ?? 0;
   const rsvpMembers = members.filter(m => event.rsvpIds?.includes(m.id));
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -100,7 +110,7 @@ function EventCard({ event, members, onViewRsvp }) {
     <div className="bg-surface-container-lowest border-2 border-outline-variant/10 rounded-2xl overflow-hidden hover:shadow-md hover:border-outline-variant/30 transition-all">
       <div className="p-5 flex gap-4">
         {/* Date block */}
-        <div className={`w-16 h-18 rounded-xl flex flex-col items-center justify-center flex-shrink-0 gap-0.5 py-3 ${cat.bg}`}>
+        <div className={`w-16 rounded-xl flex flex-col items-center justify-center flex-shrink-0 gap-0.5 py-3 ${cat.bg}`}>
           <span className={`text-[9px] font-bold uppercase ${cat.text}`}>{days[d.getDay()]}</span>
           <span className={`text-2xl font-extrabold leading-none ${cat.text}`}>{d.getDate()}</span>
           <span className={`text-[9px] font-bold uppercase ${cat.text}`}>{d.toLocaleString('default', { month: 'short' })}</span>
@@ -115,7 +125,9 @@ function EventCard({ event, members, onViewRsvp }) {
           </div>
 
           {event.description && (
-            <p className="text-sm text-on-surface-variant mt-0.5 leading-relaxed line-clamp-2">{event.description}</p>
+            <p className="text-sm text-on-surface-variant mt-0.5 leading-relaxed line-clamp-2">
+              {event.description}
+            </p>
           )}
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-on-surface-variant">
@@ -138,19 +150,15 @@ function EventCard({ event, members, onViewRsvp }) {
       {/* RSVP footer */}
       <div className="px-5 py-3 border-t border-surface-container bg-surface-container-low/50 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          {/* Avatar stack */}
           {rsvpMembers.length > 0 ? (
             <div className="flex items-center gap-2">
+              {/* ── Photo-aware avatar stack ── */}
               <div className="flex -space-x-2">
                 {rsvpMembers.slice(0, 4).map(m => (
-                  <div key={m.id}
-                    className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                    style={{ background: m.avatarColor, color: '#515f74' }}>
-                    {m.initials}
-                  </div>
+                  <MemberAvatar key={m.id} member={m} size={28} ring />
                 ))}
                 {rsvpCount > 4 && (
-                  <div className="w-7 h-7 rounded-full border-2 border-white bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface-variant">
+                  <div className="w-7 h-7 rounded-full border-2 border-white bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface-variant flex-shrink-0">
                     +{rsvpCount - 4}
                   </div>
                 )}
@@ -178,17 +186,21 @@ function EventCard({ event, members, onViewRsvp }) {
   );
 }
 
+// =============================================================================
+// EVENTS PAGE
+// =============================================================================
+
 export function Events({ events = [], setEvents, members = [] }) {
-  const [showForm, setShowForm]     = useState(false);
+  const [showForm, setShowForm]         = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [filterCat, setFilterCat]   = useState('all');
-  const [form, setForm]             = useState({
+  const [filterCat, setFilterCat]       = useState('all');
+  const [form, setForm]                 = useState({
     title: '', date: '', startTime: '', endTime: '',
     location: '', category: 'service', description: '',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  const now      = new Date(); now.setHours(0, 0, 0, 0);
+  const now       = new Date(); now.setHours(0, 0, 0, 0);
   const allEvents = filterCat === 'all' ? events : events.filter(e => e.category === filterCat);
   const upcoming  = allEvents.filter(e => new Date(e.date) >= now).sort((a, b) => new Date(a.date) - new Date(b.date));
   const past      = allEvents.filter(e => new Date(e.date) < now).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -207,6 +219,7 @@ export function Events({ events = [], setEvents, members = [] }) {
 
   return (
     <div className="fade-in">
+
       {/* Top bar */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8">
         <span className="text-lg font-bold text-on-surface font-headline">Events</span>
@@ -224,7 +237,6 @@ export function Events({ events = [], setEvents, members = [] }) {
             <h1 className="text-4xl font-extrabold font-headline tracking-tight">Events</h1>
             <p className="text-on-surface-variant mt-1 text-sm">Manage events and track member RSVPs.</p>
           </div>
-          {/* RSVP summary stat */}
           <div className="bg-primary-container/30 rounded-xl px-5 py-3 text-right border border-primary/10">
             <p className="text-2xl font-extrabold font-headline text-primary">{totalRsvps}</p>
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70">Total RSVPs</p>
@@ -234,13 +246,13 @@ export function Events({ events = [], setEvents, members = [] }) {
         {/* Category filter */}
         <div className="flex gap-1 p-1 bg-surface-container-low rounded-xl flex-wrap">
           {[
-            { id: 'all',       label: 'All',       icon: 'event'              },
-            { id: 'service',   label: 'Services',  icon: 'church'             },
-            { id: 'group',     label: 'Groups',    icon: 'diversity_3'        },
-            { id: 'team',      label: 'Teams',     icon: 'groups'             },
-            { id: 'outreach',  label: 'Outreach',  icon: 'volunteer_activism' },
-            { id: 'milestone', label: 'Milestones',icon: 'water_drop'         },
-            { id: 'workshop',  label: 'Workshops', icon: 'school'             },
+            { id: 'all',       label: 'All',        icon: 'event'              },
+            { id: 'service',   label: 'Services',   icon: 'church'             },
+            { id: 'group',     label: 'Groups',     icon: 'diversity_3'        },
+            { id: 'team',      label: 'Teams',      icon: 'groups'             },
+            { id: 'outreach',  label: 'Outreach',   icon: 'volunteer_activism' },
+            { id: 'milestone', label: 'Milestones', icon: 'water_drop'         },
+            { id: 'workshop',  label: 'Workshops',  icon: 'school'             },
           ].map(cat => (
             <button key={cat.id} onClick={() => setFilterCat(cat.id)}
               className={`flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all ${filterCat === cat.id ? 'bg-surface-container-lowest shadow-sm text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}`}>
@@ -261,7 +273,8 @@ export function Events({ events = [], setEvents, members = [] }) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className={labelCls}>Title *</label>
-                  <input value={form.title} onChange={e => f('title', e.target.value)} className={inputCls} placeholder="e.g. Sunday Service" />
+                  <input value={form.title} onChange={e => f('title', e.target.value)}
+                    className={inputCls} placeholder="e.g. Sunday Service" />
                 </div>
                 <div>
                   <label className={labelCls}>Date *</label>
@@ -285,16 +298,24 @@ export function Events({ events = [], setEvents, members = [] }) {
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Location</label>
-                  <input value={form.location} onChange={e => f('location', e.target.value)} className={inputCls} placeholder="e.g. Main Auditorium" />
+                  <input value={form.location} onChange={e => f('location', e.target.value)}
+                    className={inputCls} placeholder="e.g. Main Auditorium" />
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Description</label>
-                  <textarea value={form.description} onChange={e => f('description', e.target.value)} rows={2} className={inputCls + ' resize-none'} />
+                  <textarea value={form.description} onChange={e => f('description', e.target.value)}
+                    rows={2} className={inputCls + ' resize-none'} />
                 </div>
               </div>
               <div className="flex gap-3 justify-end pt-2">
-                <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">Cancel</button>
-                <button onClick={handleCreate} className="px-6 py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors">Create Event</button>
+                <button onClick={() => setShowForm(false)}
+                  className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleCreate}
+                  className="px-6 py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors">
+                  Create Event
+                </button>
               </div>
             </div>
           </div>
@@ -304,7 +325,10 @@ export function Events({ events = [], setEvents, members = [] }) {
         {upcoming.length > 0 && (
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">
-              Upcoming <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-[9px]">{upcoming.length}</span>
+              Upcoming{' '}
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-on-primary text-[9px]">
+                {upcoming.length}
+              </span>
             </p>
             <div className="space-y-4">
               {upcoming.map(e => (
@@ -331,7 +355,10 @@ export function Events({ events = [], setEvents, members = [] }) {
             <span className="material-symbols-outlined text-5xl mb-4 block text-outline-variant">event</span>
             <p className="font-semibold">No events yet</p>
             <p className="text-sm mt-1">Create your first event to get started.</p>
-            <button onClick={() => setShowForm(true)} className="mt-6 bg-primary text-on-primary px-6 py-3 rounded-md font-semibold text-sm hover:bg-primary-dim transition-colors">Create First Event</button>
+            <button onClick={() => setShowForm(true)}
+              className="mt-6 bg-primary text-on-primary px-6 py-3 rounded-md font-semibold text-sm hover:bg-primary-dim transition-colors">
+              Create First Event
+            </button>
           </div>
         )}
       </div>

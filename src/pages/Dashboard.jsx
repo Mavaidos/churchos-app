@@ -6,6 +6,7 @@ import { seedActivity } from '../data/seed';
 import { StatusBadge } from '../components/shared/StatusBadge';
 import { SmAvatar } from '../components/shared/Avatar';
 import { useNavigate } from 'react-router-dom';
+import { MemberAvatar } from '../components/shared/Avatar';
 
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
