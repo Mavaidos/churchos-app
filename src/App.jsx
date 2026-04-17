@@ -2,7 +2,7 @@
 // React Router v7 — URL-based navigation
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 // ── Lib ──────────────────────────────────────────────────────────────────────
@@ -359,6 +359,23 @@ function FirstTimePasswordPage({ user, onComplete }) {
     </div>
   );
 }
+function suggestGroupForAddress(address, members, groups) {
+  if (!address || address.trim().length < 4) return null;
+  const addr  = address.toLowerCase();
+  const words = addr.split(/[\s,]+/).filter(w => w.length > 3);
+  if (words.length === 0) return null;
+ 
+  const scored = groups.map(g => {
+    const groupMembers = members.filter(m => g.memberIds?.includes(m.id) && m.homeAddress);
+    const score = groupMembers.reduce((s, m) => {
+      const mAddr = m.homeAddress.toLowerCase();
+      return s + words.filter(w => mAddr.includes(w)).length;
+    }, 0);
+    return { group: g, score, count: groupMembers.length };
+  }).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+ 
+  return scored[0] ?? null;
+}
 
 function PendingApprovalPage({ user, member, onLogout }) {
   return (
@@ -595,7 +612,7 @@ function CredentialsModal({ member, credentials, onClose }) {
 // ADD MEMBER MODAL
 // =============================================================================
 
-function AddMemberModal({ groups, stages, onClose, onSave }) {
+function AddMemberModal({ groups, stages, members = [], onClose, onSave }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     firstName: "",
@@ -640,6 +657,11 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
       label: "Visitor",
     },
   ];
+  const [suggestion, setSuggestion] = useState(null);
+      useEffect(() => {
+      const result = suggestGroupForAddress(form.homeAddress, members, groups);
+      setSuggestion(result);
+    }, [form.homeAddress]);
 
   const validateStep1 = () => {
     const e = {};
@@ -660,6 +682,7 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
     setErrors({});
     setStep(2);
   };
+  
 
   const submit = () => {
     const fullName = `${form.firstName.trim()} ${form.surname.trim()}`;
@@ -861,6 +884,21 @@ function AddMemberModal({ groups, stages, onClose, onSave }) {
               </div>
             </>
           )}
+            {suggestion && (
+    <div className="flex items-start gap-3 px-4 py-3 bg-primary-container/20 border border-primary/20 rounded-xl">
+      <span className="material-symbols-outlined text-primary text-sm flex-shrink-0 mt-0.5">location_on</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-bold text-primary">Homecell suggestion</p>
+        <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">
+          <strong>{suggestion.count} member{suggestion.count !== 1 ? 's' : ''}</strong> near this address are in{' '}
+          <strong>{suggestion.group.name}</strong>. Consider adding this person to that group.
+        </p>
+      </div>
+      <span className="text-[10px] font-bold text-primary whitespace-nowrap px-2 py-1 bg-primary-container rounded-full flex-shrink-0">
+        {suggestion.group.name}
+      </span>
+    </div>
+  )}
           {step === 2 && (
             <>
               <div>
@@ -1289,7 +1327,11 @@ function Members({
 
       {/* ── Modals ── */}
       {showAdd && (
-        <AddMemberModal groups={groups} stages={stages} onClose={() => setShowAdd(false)} onSave={handleAdd} />
+        <AddMemberModal
+         groups={groups} 
+         stages={stages} 
+         members={members}
+         onClose={() => setShowAdd(false)} onSave={handleAdd} />
       )}
 
       {editingMember && (
@@ -3938,17 +3980,263 @@ const SERVICES = [
   "Community Outreach",
   "Worship Rehearsal",
 ];
+// ══════════════════════════════════════════════════════════════════════════════
+// NEW COMPONENT — MemberInbox
+// Add this BEFORE function MemberPortal in App.jsx (or just above it).
+// This is the Messages tab content rendered inside the Member Portal.
+// ══════════════════════════════════════════════════════════════════════════════
+ 
+function MemberInbox({ member, members, groups, messages, setMessages }) {
+  const memberGroup = groups.find(g => g.memberIds?.includes(member?.id));
+
+  // All messages that involve this member
+  const myMessages = messages.filter(msg => {
+    const myId = String(member?.id);
+    const isIncomingDirect = msg.toType === 'member' && String(msg.toId) === myId;
+    const isOutgoingDirect = msg.fromRole === 'member' && String(msg.fromId) === myId;
+    const isGroupMsg = memberGroup && msg.toType === 'group' && msg.toId === memberGroup.id;
+    return isIncomingDirect || isOutgoingDirect || isGroupMsg;
+  });
+
+  // Build thread map
+  const threadMap = {};
+  myMessages.forEach(msg => {
+    const key = msg.toType === 'group' ? `group-${msg.toId}` : 'direct';
+    const name = msg.toType === 'group' ? (memberGroup?.name ?? 'My Group') : 'Pastoral Team';
+    const type = msg.toType === 'group' ? 'group' : 'direct';
+    if (!threadMap[key]) threadMap[key] = { key, name, type, msgs: [], unread: 0, last: null };
+    threadMap[key].msgs.push(msg);
+    if (!msg.read && String(msg.toId) === String(member?.id)) threadMap[key].unread++;
+    if (!threadMap[key].last || new Date(msg.timestamp) > new Date(threadMap[key].last.timestamp)) {
+      threadMap[key].last = msg;
+    }
+  });
+
+  const threads = Object.values(threadMap).sort(
+    (a, b) => new Date(b.last?.timestamp ?? 0) - new Date(a.last?.timestamp ?? 0)
+  );
+
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [reply, setReply] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+  const bottomRef = useRef(null);
+
+  // Auto-select first thread on mount or when threads appear
+  useEffect(() => {
+    if (threads.length > 0 && !selectedKey) setSelectedKey(threads[0].key);
+  }, [threads.length]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [selectedKey, messages.length]);
+
+  const openThread = key => {
+    setSelectedKey(key);
+    setMessages(prev => prev.map(m => {
+      const k = m.toType === 'group' ? `group-${m.toId}` : 'direct';
+      return k === key && !m.read && String(m.toId) === String(member?.id)
+        ? { ...m, read: true } : m;
+    }));
+  };
+
+  const activeThread = selectedKey ? threadMap[selectedKey] : null;
+  const threadMsgs = [...(activeThread?.msgs ?? [])].sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+  );
+
+  const sendReply = () => {
+    const body = (activeThread ? reply : newMessage).trim();
+    if (!body) return;
+    const isGroup = activeThread?.type === 'group';
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      fromId: member?.id,
+      fromName: member?.name,
+      fromRole: 'member',
+      toType: isGroup ? 'group' : 'member',
+      toId: isGroup ? memberGroup?.id : null,
+      toName: isGroup ? (memberGroup?.name ?? 'Group') : 'Admin',
+      body,
+      timestamp: new Date().toISOString(),
+      read: false,
+    }]);
+    if (activeThread) setReply(''); else setNewMessage('');
+    if (!activeThread) setSelectedKey('direct');
+  };
+
+  const fmt = ts => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'Just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return new Date(ts).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+  };
+
+  return (
+    <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
+      <div>
+        <h2 className="text-xl font-extrabold font-headline text-on-surface">Messages</h2>
+        <p className="text-xs text-on-surface-variant mt-0.5">
+          Stay connected with your pastor and group leader.
+        </p>
+      </div>
+
+      {/* Thread pills */}
+      {threads.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {threads.map(t => (
+            <button key={t.key} onClick={() => openThread(t.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                selectedKey === t.key
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
+              }`}>
+              <span className="material-symbols-outlined text-xs">
+                {t.type === 'group' ? 'diversity_3' : 'church'}
+              </span>
+              {t.name}
+              {t.unread > 0 && (
+                <span className="px-1 rounded-full bg-error text-white text-[9px] font-bold">{t.unread}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state with compose */}
+      {threads.length === 0 && (
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
+          <div className="p-6 text-center text-on-surface-variant">
+            <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">chat_bubble_outline</span>
+            <p className="font-semibold text-sm">No messages yet</p>
+            <p className="text-xs mt-1 opacity-70">Send your first message below.</p>
+          </div>
+          <div className="px-4 pb-4 border-t border-surface-container pt-3">
+            <div className="flex gap-2 items-end">
+              <textarea value={newMessage} onChange={e => setNewMessage(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }}}
+                placeholder="Message your pastoral team…" rows={3}
+                className="flex-1 bg-surface-container-low border border-outline-variant/20 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
+              <button onClick={sendReply} disabled={!newMessage.trim()}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  newMessage.trim() ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-outline cursor-not-allowed'
+                }`}>
+                <span className="material-symbols-outlined text-sm ms-filled">send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active conversation */}
+      {activeThread && (
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-surface-container flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-primary ms-filled text-base">
+                {activeThread.type === 'group' ? 'diversity_3' : 'church'}
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-on-surface">{activeThread.name}</p>
+              <p className="text-xs text-on-surface-variant">
+                {activeThread.type === 'group' ? 'Group thread' : 'Direct with pastoral team'}
+              </p>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="p-4 space-y-3 max-h-80 overflow-y-auto">
+            {threadMsgs.length === 0 ? (
+              <p className="text-center text-xs text-outline-variant py-4">No messages yet — say hi!</p>
+            ) : threadMsgs.map(msg => {
+              const isMe = String(msg.fromId) === String(member?.id);
+              const senderMember = !isMe ? members.find(m => String(m.id) === String(msg.fromId)) : null;
+              return (
+                <div key={msg.id} className={`flex gap-2.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {!isMe && (
+                    <div className="self-end flex-shrink-0 mb-4">
+                      {senderMember ? (
+                        <MemberAvatar member={senderMember} size={28} />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-primary-container flex items-center justify-center">
+                          <span className="material-symbols-outlined text-primary ms-filled" style={{ fontSize: 14 }}>
+                            {msg.fromRole === 'leader' ? 'star' : 'church'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className={`max-w-[80%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                    {!isMe && (
+                      <p className="text-[10px] font-bold text-outline uppercase tracking-wider px-1">
+                        {msg.fromName}
+                      </p>
+                    )}
+                    <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                      isMe
+                        ? 'bg-primary text-on-primary rounded-tr-sm'
+                        : 'bg-surface-container-low text-on-surface rounded-tl-sm'
+                    }`}>
+                      {msg.body}
+                    </div>
+                    <p className="text-[10px] text-outline-variant px-1">{fmt(msg.timestamp)}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Reply */}
+          <div className="px-4 py-3 border-t border-surface-container">
+            <div className="flex gap-2 items-end">
+              <textarea value={reply} onChange={e => setReply(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }}}
+                placeholder="Type a reply…" rows={2}
+                className="flex-1 bg-surface-container-low border border-outline-variant/20 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
+              <button onClick={sendReply} disabled={!reply.trim()}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+                  reply.trim() ? 'bg-primary text-on-primary hover:bg-primary-dim' : 'bg-surface-container-high text-outline cursor-not-allowed'
+                }`}>
+                <span className="material-symbols-outlined text-sm ms-filled">send</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-outline-variant mt-1">Enter to send · Shift+Enter for new line</p>
+          </div>
+        </div>
+      )}
+
+      {/* Church contacts info */}
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Church Contacts</p>
+        {[
+          { label: 'Lead Pastor', value: 'pastor@church.org', icon: 'church' },
+          { label: 'Admin Office', value: 'admin@church.org', icon: 'mail' },
+        ].map(c => (
+          <div key={c.label} className="flex items-center gap-3 py-2">
+            <span className="material-symbols-outlined text-primary text-sm">{c.icon}</span>
+            <div>
+              <p className="text-[10px] text-outline uppercase font-bold tracking-wider">{c.label}</p>
+              <p className="text-sm text-on-surface font-medium">{c.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 function MemberPortal({
-  members,
-  stages,
-  setMembers,
-  groups,
-  events = [],
-  setEvents,
-  toast,
-  onLogout,
-}) {
+   members, stages, setMembers, groups,
+   events = [], setEvents,
+   messages = [], setMessages,
+   toast, onLogout,
+ }) {
   const { user } = useAuth();
   const member = members.find((m) => m.id === user?.memberId) ?? null;
 
@@ -3978,11 +4266,23 @@ function MemberPortal({
 
   const [message, setMessage] = useState("");
   const [msgSent, setMsgSent] = useState(false);
-  const sendMessage = () => {
+   const sendMessage = () => {
     if (!message.trim()) return;
-    setMessage("");
+    setMessages(prev => [...prev, {
+      id:        Date.now(),
+      fromId:    member?.id ?? user?.memberId,
+      fromName:  member?.name ?? user?.name,
+      fromRole:  'member',
+      toType:    'member',
+      toId:      null,
+      toName:    'Admin',
+      body:      message.trim(),
+      timestamp: new Date().toISOString(),
+      read:      false,
+    }]);
+    setMessage('');
     setMsgSent(true);
-    toast("✓ Message sent to your administrator");
+    toast('✓ Message sent to your administrator');
     setTimeout(() => setMsgSent(false), 4000);
   };
 
@@ -4094,14 +4394,22 @@ function MemberPortal({
   };
   const si = STATUS_INFO[stageKey] ?? STATUS_INFO.new_applicant;
 
+    const myMessages = messages.filter(msg => {
+    const myId = String(member?.id);
+    if (msg.toType === 'member' && String(msg.toId) === myId) return true;
+    if (msg.fromRole === 'member' && String(msg.fromId) === myId) return true;
+    const memberGroup2 = groups.find(g => g.memberIds?.includes(member?.id));
+    if (memberGroup2 && msg.toType === 'group' && msg.toId === memberGroup2.id) return true;
+    return false;
+  });
+  const myUnread = myMessages.filter(m => !m.read && String(m.toId) === String(member?.id)).length;
+
   const navItems = [
-    { id: "journey", icon: "explore", label: "Journey" },
-    { id: "events", icon: "event", label: "Events" },
-    ...(isServingMember
-      ? [{ id: "checkin", icon: "how_to_reg", label: "Check In" }]
-      : []),
-    { id: "info", icon: "person", label: "My Info" },
-    { id: "contact", icon: "mail", label: "Contact" },
+    { id: 'journey',  icon: 'explore',      label: 'Journey'  },
+    { id: 'events',   icon: 'event',        label: 'Events'   },
+    ...(isServingMember ? [{ id: 'checkin', icon: 'how_to_reg', label: 'Check In' }] : []),
+    { id: 'inbox',    icon: 'chat',         label: 'Messages' },
+    { id: 'info',     icon: 'person',       label: 'My Info'  },
   ];
 
   if (!member) {
@@ -4522,6 +4830,22 @@ function MemberPortal({
             </div>
           </div>
         )}
+ {/* ══════════════════════════════════════════════
+    INBOX TAB
+══════════════════════════════════════════════ */}
+{activeTab === "inbox" && (
+  <MemberInbox
+    member={member}
+    members={members}
+    groups={groups}
+    messages={messages}
+    setMessages={setMessages}
+    user={user}
+  />
+)}
+
+ 
+ 
 
         {/* ══════════════════════════════════════════════
             MY INFO TAB
@@ -4680,61 +5004,7 @@ function MemberPortal({
             </div>
           </div>
         )}
-
-        {/* ══════════════════════════════════════════════
-            CONTACT TAB
-        ══════════════════════════════════════════════ */}
-        {activeTab === "contact" && (
-          <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
-            <div>
-              <h2 className="text-xl font-extrabold font-headline text-on-surface">Get in Touch</h2>
-              <p className="text-xs text-on-surface-variant mt-0.5">Send a message directly to your church administrator.</p>
-            </div>
-            <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
-              <div className="px-5 py-4 border-b border-surface-container">
-                <h3 className="text-sm font-bold font-headline">Message Admin</h3>
-              </div>
-              <div className="px-5 py-5 space-y-4">
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Write your message here — prayer requests, questions, or anything on your heart…"
-                  rows={6}
-                  disabled={msgSent}
-                  className={`w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none ${msgSent ? "opacity-50 cursor-not-allowed" : ""}`}
-                />
-                {msgSent && (
-                  <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-xl border border-green-200">
-                    <span className="material-symbols-outlined text-green-600 ms-filled text-sm">check_circle</span>
-                    <p className="text-xs text-green-700 font-semibold">Sent! Your administrator will be in touch soon.</p>
-                  </div>
-                )}
-                <button
-                  onClick={sendMessage}
-                  disabled={!message.trim() || msgSent}
-                  className={`w-full py-3.5 text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${message.trim() && !msgSent ? "bg-primary text-on-primary hover:bg-primary-dim shadow-sm" : "bg-surface-container-high text-outline cursor-not-allowed"}`}
-                >
-                  <span className="material-symbols-outlined text-sm">send</span>Send Message
-                </button>
-              </div>
-            </div>
-            <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Church Contacts</p>
-              {[
-                { label: "Lead Pastor", value: "pastor@church.org", icon: "church" },
-                { label: "Admin Office", value: "admin@church.org", icon: "mail" },
-              ].map((c) => (
-                <div key={c.label} className="flex items-center gap-3 py-2">
-                  <span className="material-symbols-outlined text-primary text-sm">{c.icon}</span>
-                  <div>
-                    <p className="text-[10px] text-outline uppercase font-bold tracking-wider">{c.label}</p>
-                    <p className="text-sm text-on-surface font-medium">{c.value}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+  
       </div>
 
       {/* ── Bottom Tab Bar ── */}
@@ -4763,13 +5033,17 @@ function MemberPortal({
               {n.id === "checkin" && !checkedInToday && activeTab !== "checkin" && (
                 <div className="absolute top-2 right-[calc(50%-14px)] w-1.5 h-1.5 bg-amber-500 rounded-full" />
               )}
+             
+ {n.id === 'inbox' && myUnread > 0 && activeTab !== 'inbox' && (
+  <div className="absolute top-2 right-[calc(50%-14px)] w-1.5 h-1.5 bg-primary rounded-full" />
+)}
             </button>
           ))}
         </div>
       </div>
     </div>
   );
-}
+ }
 
 
 function Unauthorized() {
@@ -4816,6 +5090,11 @@ export default function App() {
   const [stages, setStages] = useState(seedStages);
   const [rules, setRules] = useState(seedRules);
   const [users, setUsers] = useState(seedUsers);
+const [messages, setMessages] = useState([
+  { id: 1, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'all', toId: null, toName: 'All Members', body: 'Welcome everyone! So glad to have you as part of our church family.', timestamp: '2026-04-10T09:00:00.000Z', read: true },
+  { id: 2, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'group', toId: 1, toName: 'Worship Team', body: 'Team, reminder that our group meeting is this Saturday at 10am. Looking forward to seeing you all!', timestamp: '2026-04-14T08:00:00.000Z', read: true },
+  { id: 3, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'member', toId: 1, toName: 'Sarah Jenkins', body: 'Hi Sarah, just checking in on how your journey is going. Let me know if you need anything!', timestamp: '2026-04-15T08:30:00.000Z', read: false },
+]);
   const [toastMsg, setToastMsg] = useState(null);
   const [showEnrolModal, setShowEnrolModal] = useState(false);
   const [user, setUser] = useState(null);
@@ -4882,16 +5161,12 @@ export default function App() {
   if (user.role === "member") {
     return (
       <AuthContext.Provider value={{ user, login, logout }}>
-        <MemberPortal
-          members={members}
-          stages={stages}
-          setMembers={setMembers}
-          groups={groups}
-          events={events}
-          setEvents={setEvents}
-          toast={toast}
-          onLogout={logout}
-        />
+      <MemberPortal
+   members={members} stages={stages} setMembers={setMembers}
+   groups={groups} events={events} setEvents={setEvents}
+   messages={messages} setMessages={setMessages}
+   toast={toast} onLogout={logout}
+ />
         {toastMsg && <Toast msg={toastMsg} onDone={() => setToastMsg(null)} />}
       </AuthContext.Provider>
     );
@@ -4985,15 +5260,22 @@ export default function App() {
             <Route
               path="/messages"
               element={
-                <RoleGuard roles={["pastor", "admin"]}>
-                  <Messages groups={groups} />
+                <RoleGuard roles={['pastor', 'admin', 'leader']}>
+                  <Messages
+  groups={groups}
+  members={members}
+  messages={messages}
+  stages={stages}
+  setMessages={setMessages}
+  user={user}
+/>
                 </RoleGuard>
               }
             />
             <Route
               path="/engine"
               element={
-                <RoleGuard roles={["pastor", "admin"]}>
+                <RoleGuard roles={['pastor', 'admin', 'leader']}>
                   <Engine
                     stages={stages}
                     setStages={setStages}
@@ -5008,7 +5290,7 @@ export default function App() {
             <Route
               path="/settings"
               element={
-                <RoleGuard roles={["pastor", "admin"]}>
+                <RoleGuard roles={['pastor', 'admin', 'leader']}>
                   <Settings toast={toast} />
                 </RoleGuard>
               }

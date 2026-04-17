@@ -302,7 +302,7 @@ export function Dashboard({ members, groups, stages, setPage, setSelectedMember,
           {recentMembers.map(m => (
             <div key={m.id}
               className="flex items-center gap-4 py-4 hover:bg-surface-container-low -mx-2 px-2 rounded-xl transition-colors cursor-pointer"
-              onClick={() => { setSelectedMember(m); setPage('profile'); }}>
+              onClick={() => navigate(`/members/${m.id}`)}>
               <SmAvatar member={m} />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm text-on-surface truncate">{m.name}</p>

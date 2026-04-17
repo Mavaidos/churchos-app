@@ -8,7 +8,7 @@ const allNav = [
   { to: '/groups',     icon: 'diversity_3',              label: 'Groups',     roles: ['pastor', 'admin', 'leader'] },
   { to: '/attendance', icon: 'fact_check',               label: 'Attendance', roles: ['pastor', 'admin', 'leader'] },
   { to: '/events',     icon: 'event',                    label: 'Events',     roles: ['pastor', 'admin', 'leader'] },
-  { to: '/messages',   icon: 'forum',                    label: 'Messages',   roles: ['pastor', 'admin']           },
+  { to: '/messages',   icon: 'forum',                    label: 'Messages',   roles: ['pastor', 'admin', 'leader'] },
   { to: '/engine',     icon: 'settings_input_component', label: 'Blueprint',  roles: ['pastor', 'admin']           },
   { to: '/settings',   icon: 'settings',                 label: 'Settings',   roles: ['pastor', 'admin']           },
 ];

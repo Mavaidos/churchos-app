@@ -11,6 +11,7 @@ export const seedMembers = [
   { id:8, name:'Alex Kim',        email:'alex.k@email.com',        phone:'555-0808', group:'Home Cell #4',   status:'active', enrollmentStage:'new_applicant',    currentStageIndex:0, joinDate:'2024-02-20', gender:'Male',   maritalStatus:'Single',  spouseId:null, spouseName:null,              faithStatus:'visitor',    comment:'', mentor:null,             mentorId:null, avatarColor:'#dde3e9', initials:'AK', tasks:{1:[false,false],2:[],3:[],4:[]},             override:mkOverride() },
 ];
 
+
 export const seedGroups = [
   { id:1, name:'Worship Team',     icon:'music_note',        iconBg:'#d5e3fd', iconColor:'#515f74', leader:'Elena Rodriguez', leaderId:3, status:'Active',       description:'Sunday service worship and music ministry',           schedule:'Thursdays 7pm',  memberIds:[1,3,4,7], avgProgression:84 , servingTeam: true  },
   { id:2, name:'Life Group North', icon:'home',              iconBg:'#d3e4fe', iconColor:'#506076', leader:'David Chen',      leaderId:4, status:'Active',       description:'Weekly small group meeting in the north suburbs',     schedule:'Tuesdays 7:30pm',memberIds:[1,4,5,6], avgProgression:62 },
