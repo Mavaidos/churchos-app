@@ -24,14 +24,8 @@ import { mkOverride, createMemberDefaults } from "./lib/members";
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 import {
-  seedMembers,
-  seedGroups,
-  seedStages,
-  seedRules,
-  seedUsers,
-  seedEvents,
+  seedMembers, seedGroups, seedStages, seedRules, seedUsers, seedEvents, seedZones,
 } from "./data/seed";
-
 // ── Shared components ─────────────────────────────────────────────────────────
 import { Avatar, SmAvatar, MemberAvatar } from "./components/shared/Avatar";
 import { StatusBadge, StageBadge } from "./components/shared/StatusBadge";
@@ -645,6 +639,8 @@ export default function App() {
   const [stages,  setStages]    = useState(seedStages);
   const [rules,   setRules]     = useState(seedRules);
   const [users,   setUsers]     = useState(seedUsers);
+  const [zones, setZones] = useState(seedZones);
+
 
   // ── Messages — shared between admin/leader (Messages.jsx) and member portal
   // IMPORTANT: toId must match the memberId in seedUsers for the demo member
@@ -746,14 +742,27 @@ export default function App() {
             } />
             <Route path="/members/:id" element={
               <RoleGuard roles={["pastor","admin","leader"]}>
-                <MemberDetail members={members} stages={stages} setMembers={setMembers} toast={toast} />
+                <MemberDetail
+  members={members}
+  stages={stages}
+  setMembers={setMembers}
+  groups={groups}
+  setGroups={setGroups}
+  toast={toast}
+/>
               </RoleGuard>
             } />
             <Route path="/groups" element={
-              <RoleGuard roles={["pastor","admin","leader"]}>
-                <Groups groups={groups} setGroups={setGroups} members={members} stages={stages} rules={rules} toast={toast} />
-              </RoleGuard>
-            } />
+  <RoleGuard roles={["pastor","admin","leader"]}>
+    <Groups
+      groups={groups} setGroups={setGroups}
+      zones={zones}   setZones={setZones}
+      members={members} stages={stages} rules={rules}
+      users={users}   setUsers={setUsers}
+      toast={toast}
+    />
+  </RoleGuard>
+} />
             <Route path="/attendance" element={
               <RoleGuard roles={["pastor","admin","leader"]}>
                 <Attendance members={members} groups={groups} />

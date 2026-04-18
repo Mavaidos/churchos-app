@@ -88,8 +88,171 @@ function AssignMentorModal({ currentMember, members, stages, onClose, onAssign }
   );
 }
 
+// ── Assign Group Modal ────────────────────────────────────────────────────────
+// Shows home cells and serving teams. Admin/pastor can assign or remove.
+function AssignGroupModal({ member, groups, setGroups, setMembers, onClose, toast }) {
+  const [tab, setTab]   = useState('home_cell');
+  const [search, setSearch] = useState('');
+
+  const GROUP_TYPE_META = {
+    home_cell:   { label: 'Home Cells',   icon: 'home',     color: 'text-blue-700'   },
+    sunday_team: { label: 'Sunday Teams', icon: 'church',   color: 'text-amber-700'  },
+    ministry:    { label: 'Ministries',   icon: 'favorite', color: 'text-purple-700' },
+    department:  { label: 'Departments',  icon: 'category', color: 'text-green-700'  },
+  };
+
+  const TABS = [
+    { id: 'home_cell',   label: 'Home Cell',   icon: 'home'     },
+    { id: 'sunday_team', label: 'Sunday Teams',icon: 'church'   },
+    { id: 'ministry',    label: 'Ministries',  icon: 'favorite' },
+    { id: 'department',  label: 'Departments', icon: 'category' },
+  ];
+
+  // Groups of the current tab type, filtered by search
+  const tabGroups = groups
+    .filter(g => g.type === tab)
+    .filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase()));
+
+  const isMemberOf = g => g.memberIds.includes(member.id);
+
+  // For home cells — member can only be in ONE
+  const currentCell = groups.find(g => g.type === 'home_cell' && g.memberIds.includes(member.id));
+
+  const addToGroup = g => {
+    // If home cell, remove from any existing cell first
+    if (g.type === 'home_cell' && currentCell) {
+      setGroups(prev => prev.map(gr =>
+        gr.id === currentCell.id
+          ? { ...gr, memberIds: gr.memberIds.filter(id => id !== member.id) }
+          : gr
+      ));
+    }
+    setGroups(prev => prev.map(gr =>
+      gr.id === g.id ? { ...gr, memberIds: [...new Set([...gr.memberIds, member.id])] } : gr
+    ));
+    // Update member.group display name for home cell
+    if (g.type === 'home_cell') {
+      setMembers(prev => prev.map(mb => mb.id === member.id ? { ...mb, group: g.name } : mb));
+    }
+    toast(`✓ ${member.name} added to ${g.name}`);
+  };
+
+  const removeFromGroup = g => {
+    setGroups(prev => prev.map(gr =>
+      gr.id === g.id ? { ...gr, memberIds: gr.memberIds.filter(id => id !== member.id) } : gr
+    ));
+    if (g.type === 'home_cell') {
+      setMembers(prev => prev.map(mb => mb.id === member.id ? { ...mb, group: '' } : mb));
+    }
+    toast(`${member.name} removed from ${g.name}`);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg mx-4 slide-in overflow-hidden flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="p-7 pb-4 border-b border-surface-container flex-shrink-0">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Group Assignment</p>
+              <h3 className="text-xl font-bold font-headline">{member.name}</h3>
+              <p className="text-xs text-on-surface-variant mt-1">
+                Home cell: <span className="font-semibold text-on-surface">{currentCell?.name ?? 'None assigned'}</span>
+              </p>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full transition-colors">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          {/* Tab bar */}
+          <div className="flex gap-0 border-b border-surface-container -mx-7 px-7">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => { setTab(t.id); setSearch(''); }}
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-b-2 -mb-px transition-all ${tab === t.id ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}>
+                <span className="material-symbols-outlined text-sm">{t.icon}</span>{t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 flex-shrink-0">
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-sm">search</span>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={`Search ${GROUP_TYPE_META[tab]?.label ?? 'groups'}…`}
+              className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+          </div>
+        </div>
+
+        {/* Group list */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-2">
+          {/* Home cell — single selection note */}
+          {tab === 'home_cell' && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg mb-2">
+              <span className="material-symbols-outlined text-blue-600 text-sm">info</span>
+              <p className="text-xs text-blue-700">A member can only belong to one home cell. Selecting a new one removes them from the current one.</p>
+            </div>
+          )}
+
+          {tabGroups.length === 0 ? (
+            <div className="text-center py-10 text-on-surface-variant">
+              <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">{GROUP_TYPE_META[tab]?.icon}</span>
+              <p className="text-sm font-semibold">No {GROUP_TYPE_META[tab]?.label} found</p>
+            </div>
+          ) : tabGroups.map(g => {
+            const inGroup  = isMemberOf(g);
+            const isCell   = g.type === 'home_cell';
+            return (
+              <div key={g.id}
+                className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${inGroup ? 'border-primary/30 bg-primary-container/10' : 'border-outline-variant/10 bg-surface-container-low/50'}`}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: g.iconBg ?? '#d5e3fd', color: g.iconColor ?? '#515f74' }}>
+                  <span className="material-symbols-outlined text-sm">{g.icon ?? 'groups'}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-on-surface truncate">{g.name}</p>
+                    {inGroup && (
+                      <span className="text-[10px] font-bold text-primary bg-primary-container/40 px-2 py-0.5 rounded-full flex-shrink-0">
+                        {isCell ? 'Current Cell' : 'Member'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-on-surface-variant truncate">
+                    {g.leader !== 'Unassigned' ? `Leader: ${g.leader}` : 'No leader'} · {g.memberIds.length} members
+                    {g.schedule ? ` · ${g.schedule}` : ''}
+                  </p>
+                </div>
+                {inGroup ? (
+                  <button onClick={() => removeFromGroup(g)}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-error bg-error-container/20 rounded-lg hover:bg-error-container/30 transition-colors">
+                    <span className="material-symbols-outlined text-xs">remove</span>Remove
+                  </button>
+                ) : (
+                  <button onClick={() => addToGroup(g)}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-primary bg-primary-container/30 rounded-lg hover:bg-primary-container/50 transition-colors">
+                    <span className="material-symbols-outlined text-xs">add</span>Add
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="p-5 border-t border-surface-container flex-shrink-0">
+          <button onClick={onClose}
+            className="w-full py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Member Detail Page ────────────────────────────────────────────────────────
-export function MemberDetail({ members, stages, setMembers, toast }) {
+export function MemberDetail({ members, stages, setMembers, groups, setGroups, toast }) {
   const { user }   = useAuth();
   const navigate   = useNavigate();
   const id         = window.location.pathname.split('/').pop();
@@ -98,6 +261,7 @@ export function MemberDetail({ members, stages, setMembers, toast }) {
   const [m, setM]  = useState(found);
 
   const [showAssignMentor, setShowAssignMentor] = useState(false);
+  const [showAssignGroup, setShowAssignGroup]   = useState(false);
   const [overrideDraft, setOverrideDraft]       = useState(false);
   const [overrideReason, setOverrideReason]     = useState('');
 
@@ -355,6 +519,75 @@ export function MemberDetail({ members, stages, setMembers, toast }) {
                 </button>
               )}
             </div>
+
+            {/* Group Assignment panel */}
+            {hasPermission(user, 'assign') && groups && (
+              <div className="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-primary/5">
+                <div className="flex items-center justify-between mb-4">
+                  <h5 className="font-headline font-bold text-sm">Group Assignments</h5>
+                  <button onClick={() => setShowAssignGroup(true)}
+                    className="text-[10px] font-bold uppercase tracking-wider text-primary hover:underline flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">edit</span>Manage
+                  </button>
+                </div>
+
+                {/* Home cell */}
+                {(() => {
+                  const cell = groups.find(g => g.type === 'home_cell' && g.memberIds.includes(m.id));
+                  return (
+                    <div className="mb-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5">Home Cell</p>
+                      {cell ? (
+                        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 rounded-xl">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: cell.iconBg ?? '#d3e4fe', color: cell.iconColor ?? '#506076' }}>
+                            <span className="material-symbols-outlined text-xs">home</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-on-surface truncate">{cell.name}</p>
+                            {cell.leader !== 'Unassigned' && <p className="text-[10px] text-on-surface-variant">Leader: {cell.leader}</p>}
+                          </div>
+                          <span className="material-symbols-outlined text-blue-600 text-sm ms-filled">check_circle</span>
+                        </div>
+                      ) : (
+                        <button onClick={() => setShowAssignGroup(true)}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-outline-variant/20 hover:border-primary/40 hover:bg-primary-container/10 transition-all text-outline-variant hover:text-primary">
+                          <span className="material-symbols-outlined text-sm">add</span>
+                          <span className="text-xs font-semibold">Assign to Home Cell</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Serving teams */}
+                {(() => {
+                  const serving = groups.filter(g => g.type !== 'home_cell' && g.memberIds.includes(m.id));
+                  if (serving.length === 0) return (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5">Teams & Ministries</p>
+                      <p className="text-xs text-on-surface-variant italic">Not assigned to any teams</p>
+                    </div>
+                  );
+                  return (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-1.5">Teams & Ministries</p>
+                      <div className="space-y-1.5">
+                        {serving.map(g => (
+                          <div key={g.id} className="flex items-center gap-2 px-3 py-2 bg-surface-container-low rounded-lg">
+                            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                              style={{ background: g.iconBg ?? '#d5e3fd', color: g.iconColor ?? '#515f74' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{g.icon ?? 'groups'}</span>
+                            </div>
+                            <p className="text-xs font-semibold text-on-surface truncate flex-1">{g.name}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -362,6 +595,10 @@ export function MemberDetail({ members, stages, setMembers, toast }) {
       {showAssignMentor && (
         <AssignMentorModal currentMember={m} members={members} stages={stages}
           onClose={() => setShowAssignMentor(false)} onAssign={handleAssignMentor} />
+      )}
+      {showAssignGroup && groups && setGroups && (
+        <AssignGroupModal member={m} groups={groups} setGroups={setGroups}
+          setMembers={setMembers} onClose={() => setShowAssignGroup(false)} toast={toast} />
       )}
     </div>
   );
