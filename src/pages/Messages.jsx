@@ -1,90 +1,8 @@
+// ─── src/pages/Messages.jsx ──────────────────────────────────────────────────
 import { useState, useRef, useEffect } from 'react';
 import { MemberAvatar } from '../components/shared/Avatar';
-
-// =============================================================================
-// UTILITIES
-// =============================================================================
-
-/**
- * Canonical thread key for any message.
- * - 'broadcast'         → admin-to-all
- * - 'group-{id}'        → group thread
- * - 'member-{memberId}' → direct (admin↔member OR leader↔member)
- *   The memberId is ALWAYS the non-admin/leader side so both directions
- *   land in the same thread.
- */
-function threadKey(msg) {
-  if (msg.toType === 'all') return 'broadcast';
-  if (msg.toType === 'group') return `group-${msg.toId}`;
-  // direct: key on the member's id regardless of direction
-  const mId = msg.fromRole === 'member' ? msg.fromId : msg.toId;
-  return `member-${mId}`;
-}
-
-function timeAgo(ts) {
-  const diff = Date.now() - new Date(ts).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'Just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return new Date(ts).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
-}
-
-/**
- * Returns only the messages this user is allowed to see.
- * - Pastor / Admin: everything
- * - Leader: their group thread + direct threads with members IN their group
- * - Member: this function is not called for members (they have their own portal view)
- */
-function getVisibleMessages(user, messages, members, groups) {
-  if (!user) return [];
-  if (user.role === 'pastor' || user.role === 'admin') return messages;
-
-  if (user.role === 'leader') {
-    const myGroup = groups.find(g => g.id === user.groupId);
-    const myMemberIdSet = new Set((myGroup?.memberIds ?? []).map(String));
-    return messages.filter(msg => {
-      if (msg.toType === 'group' && msg.toId === user.groupId) return true;
-      if (msg.toType === 'member') {
-        const mId = msg.fromRole === 'member' ? String(msg.fromId) : String(msg.toId);
-        return myMemberIdSet.has(mId);
-      }
-      return false;
-    });
-  }
-  return [];
-}
-
-/**
- * Build a map of threadKey → thread object from visible messages.
- */
-function buildThreads(visibleMessages, members, groups, user) {
-  const map = {};
-  visibleMessages.forEach(msg => {
-    const key = threadKey(msg);
-    if (!map[key]) {
-      let name = '', member = null, group = null;
-      if (msg.toType === 'all') {
-        name = 'All Members';
-      } else if (msg.toType === 'group') {
-        group = groups.find(g => g.id === msg.toId);
-        name = group?.name ?? msg.toName ?? 'Group';
-      } else {
-        const mId = msg.fromRole === 'member' ? msg.fromId : msg.toId;
-        member = members.find(m => String(m.id) === String(mId));
-        name = member?.name ?? (msg.fromRole === 'member' ? msg.fromName : msg.toName) ?? 'Member';
-      }
-      map[key] = { key, type: msg.toType, toId: msg.toId, name, member, group, msgs: [], unread: 0, last: null };
-    }
-    map[key].msgs.push(msg);
-    if (!msg.read && String(msg.fromId) !== String(user?.id)) map[key].unread++;
-    if (!map[key].last || new Date(msg.timestamp) > new Date(map[key].last.timestamp)) map[key].last = msg;
-  });
-  return map;
-}
+import { threadKey, timeAgo, getVisibleMessages, buildThreads } from '../lib/messages';
+import { getLeaderGroupIds } from '../lib/auth';
 
 // =============================================================================
 // THREAD AVATAR
@@ -119,56 +37,67 @@ function ThreadAvatar({ thread, size = 40 }) {
 
 // =============================================================================
 // COMPOSE MODAL
+// Leaders see only their own groups/members.
+// Recipients are always shown as a flat scrollable list — no search-first hiding.
 // =============================================================================
 
 function ComposeModal({ user, groups, members, onClose, onSend }) {
-  const isLeader  = user?.role === 'leader';
-  const myGroup   = isLeader ? groups.find(g => g.id === user.groupId) : null;
-  const myMembers = isLeader
-    ? members.filter(m => myGroup?.memberIds?.includes(m.id))
+  const isLeader       = user?.role === 'leader';
+  const leaderGroupIds = isLeader ? getLeaderGroupIds(user) : [];
+  const myGroups       = isLeader ? groups.filter(g => leaderGroupIds.includes(g.id)) : groups;
+  const myMemberIds    = new Set(myGroups.flatMap(g => g.memberIds ?? []));
+  const myMembers      = isLeader
+    ? members.filter(m => myMemberIds.has(m.id))
     : members;
 
-  // Leaders can only send to their own group or its members
   const allowedToTypes = isLeader
-    ? [{ val: 'member', label: 'Member in my group', icon: 'person' },
-       { val: 'group',  label: 'My whole group',    icon: 'diversity_3' }]
-    : [{ val: 'member', label: 'Member',             icon: 'person' },
-       { val: 'group',  label: 'Group',              icon: 'diversity_3' },
-       { val: 'all',    label: 'Everyone',            icon: 'groups' }];
+    ? [
+        { val: 'member', label: 'Member',     icon: 'person'      },
+        { val: 'group',  label: 'My Group(s)', icon: 'diversity_3' },
+      ]
+    : [
+        { val: 'member', label: 'Member',   icon: 'person'      },
+        { val: 'group',  label: 'Group',    icon: 'diversity_3' },
+        { val: 'all',    label: 'Everyone', icon: 'groups'      },
+      ];
 
-  const [toType, setToType]     = useState(allowedToTypes[0].val);
-  const [toId, setToId]         = useState('');
-  const [body, setBody]         = useState('');
-  const [search, setSearch]     = useState('');
+  const [toType, setToType]   = useState('member');
+  const [toId, setToId]       = useState('');
+  const [body, setBody]       = useState('');
+  const [search, setSearch]   = useState('');
 
-  const recipientList =
-    toType === 'group'
-      ? (isLeader ? (myGroup ? [myGroup] : []) : groups)
-          .filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase()))
-      : myMembers.filter(m => !search || m.name.toLowerCase().includes(search.toLowerCase()));
+  // Derived
+  const recipientPool = toType === 'group' ? myGroups : myMembers;
+  const filtered = recipientPool.filter(r =>
+    !search || r.name.toLowerCase().includes(search.toLowerCase())
+  );
+  const selectedGroup  = toType === 'group'  ? groups.find(g  => String(g.id)  === toId) : null;
+  const selectedMember = toType === 'member' ? members.find(m => String(m.id)  === toId) : null;
+  const selected       = selectedGroup ?? selectedMember ?? null;
+  const canSend        = body.trim() && (toType === 'all' || toId);
 
-  const selectedGroup  = toType === 'group'  ? groups.find(g => String(g.id) === String(toId)) : null;
-  const selectedMember = toType === 'member' ? members.find(m => String(m.id) === String(toId)) : null;
-  const canSend = body.trim() && (toType === 'all' || toId);
-
-  // For leader + group type, auto-select their group
-  useEffect(() => {
-    if (isLeader && toType === 'group' && myGroup) setToId(String(myGroup.id));
-  }, [toType]);
+  const switchType = val => { setToType(val); setToId(''); setSearch(''); };
 
   const handleSend = () => {
     if (!canSend) return;
     const toName =
-      toType === 'all'    ? 'All Members' :
-      toType === 'group'  ? (selectedGroup?.name ?? myGroup?.name ?? '') :
-                            (selectedMember?.name ?? '');
-    onSend({ toType, toId: toType === 'all' ? null : Number(toId), toName, body: body.trim() });
+      toType === 'all'   ? 'All Members' :
+      toType === 'group' ? (selectedGroup?.name ?? '') :
+                           (selectedMember?.name ?? '');
+    onSend({
+      toType,
+      toId:   toType === 'all' ? null : Number(toId),
+      toName,
+      body:   body.trim(),
+    });
   };
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg mx-4 slide-in overflow-hidden flex flex-col max-h-[88vh]">
-        <div className="p-7 pb-5 border-b border-surface-container flex justify-between items-start flex-shrink-0">
+
+        {/* Header */}
+        <div className="p-6 pb-4 border-b border-surface-container flex justify-between items-start flex-shrink-0">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">New Message</p>
             <h3 className="text-xl font-bold font-headline">Compose</h3>
@@ -178,118 +107,131 @@ function ComposeModal({ user, groups, members, onClose, onSend }) {
           </button>
         </div>
 
-        <div className="p-7 space-y-5 overflow-y-auto flex-1">
-          {/* To type */}
-          <div>
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Send-to type selector */}
+          <div className="px-6 pt-4 flex-shrink-0">
             <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">Send To</label>
-            <div className={`grid gap-2 ${allowedToTypes.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <div className={`grid gap-2 mb-4 ${allowedToTypes.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {allowedToTypes.map(opt => (
-                <button key={opt.val} type="button"
-                  onClick={() => { setToType(opt.val); setToId(''); setSearch(''); }}
-                  className={`py-3 rounded-xl border-2 text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                <button key={opt.val} type="button" onClick={() => switchType(opt.val)}
+                  className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                     toType === opt.val
                       ? 'border-primary bg-primary-container/30 text-primary'
                       : 'border-outline-variant/20 text-on-surface-variant hover:border-outline-variant'
                   }`}>
-                  <span className={`material-symbols-outlined text-base ${toType === opt.val ? 'ms-filled' : ''}`}>{opt.icon}</span>
+                  <span className={`material-symbols-outlined text-sm ${toType === opt.val ? 'ms-filled' : ''}`}>{opt.icon}</span>
                   {opt.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Recipient picker */}
-          {toType !== 'all' && !(isLeader && toType === 'group') && (
-            <div>
+          {/* Recipient section */}
+          {toType !== 'all' && (
+            <div className="px-6 flex-shrink-0">
               <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">
                 {toType === 'group' ? 'Select Group' : 'Select Member'}
+                {!toId && <span className="text-error ml-1">*</span>}
               </label>
 
-              {toId && (selectedGroup || selectedMember) ? (
-                <div className="flex items-center gap-3 px-3 py-2.5 bg-primary-container/30 rounded-xl">
+              {/* Selected chip */}
+              {selected ? (
+                <div className="flex items-center gap-3 px-3 py-2.5 bg-primary-container/30 rounded-xl mb-3">
                   {toType === 'member' && selectedMember && <MemberAvatar member={selectedMember} size={28} />}
                   {toType === 'group' && selectedGroup && (
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: selectedGroup.iconBg, color: selectedGroup.iconColor }}>
-                      <span className="material-symbols-outlined text-sm">{selectedGroup.icon}</span>
+                      style={{ background: selectedGroup.iconBg ?? '#d5e3fd', color: selectedGroup.iconColor ?? '#515f74' }}>
+                      <span className="material-symbols-outlined text-sm">{selectedGroup.icon ?? 'diversity_3'}</span>
                     </div>
                   )}
-                  <span className="text-sm font-semibold text-primary flex-1 truncate">
-                    {toType === 'group' ? selectedGroup?.name : selectedMember?.name}
-                  </span>
-                  <button onClick={() => { setToId(''); setSearch(''); }}
-                    className="text-primary hover:opacity-70 flex-shrink-0">
+                  <span className="text-sm font-semibold text-primary flex-1 truncate">{selected.name}</span>
+                  <button onClick={() => setToId('')}
+                    className="text-primary hover:opacity-70 flex-shrink-0 p-1">
                     <span className="material-symbols-outlined text-sm">close</span>
                   </button>
                 </div>
               ) : (
-                <>
-                  <div className="relative mb-2">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-sm">search</span>
-                    <input value={search} onChange={e => setSearch(e.target.value)} autoFocus
-                      placeholder={`Search ${toType === 'group' ? 'groups' : 'members'}…`}
-                      className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20" />
-                  </div>
-                  <div className="max-h-48 overflow-y-auto border border-outline-variant/10 rounded-xl bg-surface-container-low/50 divide-y divide-outline-variant/5">
-                    {recipientList.length === 0 ? (
-                      <p className="text-xs text-outline text-center py-4">No results</p>
-                    ) : recipientList.map(opt => (
-                      <button key={opt.id} type="button"
-                        onClick={() => { setToId(String(opt.id)); setSearch(''); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-lowest transition-colors text-left">
-                        {toType === 'member' ? (
-                          <MemberAvatar member={opt} size={32} />
-                        ) : (
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background: opt.iconBg ?? '#d5e3fd', color: opt.iconColor ?? '#515f74' }}>
-                            <span className="material-symbols-outlined text-sm">{opt.icon ?? 'diversity_3'}</span>
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-on-surface truncate">{opt.name}</p>
-                          <p className="text-xs text-on-surface-variant truncate">
-                            {toType === 'member' ? (opt.group || 'No group assigned') : `${opt.memberIds?.length ?? 0} members`}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
+                /* Search box */
+                <div className="relative mb-2">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-sm">search</span>
+                  <input
+                    value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder={`Search ${toType === 'group' ? 'groups' : 'members'}…`}
+                    className="w-full pl-9 pr-4 py-2.5 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+                </div>
               )}
             </div>
           )}
 
-          {/* Leader group auto-selection label */}
-          {isLeader && toType === 'group' && myGroup && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-primary-container/20 rounded-xl">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: myGroup.iconBg, color: myGroup.iconColor }}>
-                <span className="material-symbols-outlined text-sm">{myGroup.icon}</span>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-primary">{myGroup.name}</p>
-                <p className="text-xs text-on-surface-variant">{myGroup.memberIds?.length ?? 0} members will receive this</p>
+          {/* Recipient list — shown when no recipient selected yet */}
+          {toType !== 'all' && !selected && (
+            <div className="px-6 flex-1 overflow-y-auto min-h-0 mb-2">
+              <div className="border border-outline-variant/10 rounded-xl overflow-hidden divide-y divide-outline-variant/5 bg-surface-container-low/50">
+                {filtered.length === 0 ? (
+                  <p className="text-xs text-outline text-center py-6">
+                    {recipientPool.length === 0
+                      ? `No ${toType === 'group' ? 'groups' : 'members'} available`
+                      : 'No results match your search'}
+                  </p>
+                ) : filtered.map(opt => (
+                  <button key={opt.id} type="button"
+                    onClick={() => { setToId(String(opt.id)); setSearch(''); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-lowest transition-colors text-left">
+                    {toType === 'member' ? (
+                      <MemberAvatar member={opt} size={36} />
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: opt.iconBg ?? '#d5e3fd', color: opt.iconColor ?? '#515f74' }}>
+                        <span className="material-symbols-outlined text-sm">{opt.icon ?? 'diversity_3'}</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-on-surface truncate">{opt.name}</p>
+                      <p className="text-xs text-on-surface-variant truncate">
+                        {toType === 'member'
+                          ? (opt.group || 'No group assigned')
+                          : `${opt.memberIds?.length ?? 0} member${opt.memberIds?.length === 1 ? '' : 's'}`}
+                      </p>
+                    </div>
+                    <span className="material-symbols-outlined text-outline-variant text-sm">chevron_right</span>
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Body */}
-          <div>
-            <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">Message</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} rows={5}
+          {/* Broadcast info */}
+          {toType === 'all' && (
+            <div className="px-6 mb-3 flex-shrink-0">
+              <div className="flex items-center gap-3 px-4 py-3 bg-secondary-container/30 rounded-xl">
+                <span className="material-symbols-outlined text-secondary ms-filled text-sm">groups</span>
+                <p className="text-sm font-semibold text-secondary">
+                  This message will be sent to all {members.length} members
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Message body */}
+          <div className="px-6 pb-2 flex-shrink-0">
+            <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">Message *</label>
+            <textarea value={body} onChange={e => setBody(e.target.value)} rows={4}
               placeholder="Write your message…"
               className="w-full border border-outline-variant/30 bg-surface-container-low rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
           </div>
         </div>
 
-        <div className="p-6 border-t border-surface-container flex gap-3 justify-end flex-shrink-0">
+        {/* Footer */}
+        <div className="p-5 border-t border-surface-container flex gap-3 justify-end flex-shrink-0">
           <button onClick={onClose}
             className="px-5 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container rounded-xl transition-colors">
             Cancel
           </button>
           <button onClick={handleSend} disabled={!canSend}
             className={`px-6 py-2.5 text-sm font-semibold rounded-xl transition-colors flex items-center gap-2 ${
-              canSend ? 'bg-primary text-on-primary hover:bg-primary-dim shadow-sm' : 'bg-surface-container-high text-outline cursor-not-allowed'
+              canSend
+                ? 'bg-primary text-on-primary hover:bg-primary-dim shadow-sm'
+                : 'bg-surface-container-high text-outline cursor-not-allowed'
             }`}>
             <span className="material-symbols-outlined text-sm">send</span>Send
           </button>
@@ -300,19 +242,23 @@ function ComposeModal({ user, groups, members, onClose, onSend }) {
 }
 
 // =============================================================================
-// LEADER GROUP DASHBOARD (shown at top when role = leader)
+// LEADER GROUP DASHBOARD
+// Shown above the thread list when a leader is logged in.
+// Covers ALL groups the leader manages.
 // =============================================================================
 
 function LeaderGroupDashboard({ user, members, stages, groups }) {
-  const myGroup   = groups.find(g => g.id === user.groupId);
-  const myMembers = members.filter(m => myGroup?.memberIds?.includes(m.id));
+  const leaderGroupIds = getLeaderGroupIds(user);
+  const myGroups       = groups.filter(g => leaderGroupIds.includes(g.id));
+  if (myGroups.length === 0) return null;
 
-  if (!myGroup) return null;
+  const stageColors = ['bg-blue-100 text-blue-700','bg-cyan-100 text-cyan-700','bg-violet-100 text-violet-700','bg-green-100 text-green-700'];
 
-  const stageColors = ['bg-blue-100 text-blue-700', 'bg-cyan-100 text-cyan-700', 'bg-violet-100 text-violet-700', 'bg-green-100 text-green-700'];
+  const allMyMembers = members.filter(m =>
+    myGroups.some(g => g.memberIds.includes(m.id))
+  );
 
-  const getStageName = (m) => stages[m.currentStageIndex ?? 0]?.name ?? 'Unknown';
-  const getProgress = (m) => {
+  const getProgress = m => {
     const s = stages[m.currentStageIndex ?? 0];
     if (!s) return 0;
     const tasks = m.tasks[s.id] || [];
@@ -322,73 +268,60 @@ function LeaderGroupDashboard({ user, members, stages, groups }) {
   return (
     <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden mb-6">
       {/* Header */}
-      <div className="px-6 py-5 border-b border-surface-container flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: myGroup.iconBg, color: myGroup.iconColor }}>
-          <span className="material-symbols-outlined text-2xl">{myGroup.icon}</span>
-        </div>
+      <div className="px-6 py-4 border-b border-surface-container flex items-center gap-4">
         <div className="flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Your Group</p>
-          <h3 className="text-lg font-bold font-headline">{myGroup.name}</h3>
-          <p className="text-xs text-on-surface-variant">{myGroup.description} · {myGroup.schedule}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Your Groups</p>
+          <div className="flex gap-2 flex-wrap mt-1">
+            {myGroups.map(g => (
+              <span key={g.id} className="flex items-center gap-1.5 text-xs font-bold text-on-surface bg-surface-container px-2.5 py-1 rounded-full">
+                <span className="material-symbols-outlined text-xs">{g.icon ?? 'groups'}</span>{g.name}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-3xl font-extrabold font-headline text-primary">{myMembers.length}</p>
+          <p className="text-3xl font-extrabold font-headline text-primary">{allMyMembers.length}</p>
           <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Members</p>
         </div>
       </div>
 
-      {/* Stage summary pills */}
-      <div className="px-6 py-4 border-b border-surface-container flex flex-wrap gap-2">
+      {/* Stage pills across all groups */}
+      <div className="px-6 py-3 border-b border-surface-container flex flex-wrap gap-2">
         {stages.map((s, i) => {
-          const count = myMembers.filter(m => (m.currentStageIndex ?? 0) === i).length;
+          const count = allMyMembers.filter(m => (m.currentStageIndex ?? 0) === i).length;
+          if (count === 0) return null;
           return (
-            <span key={s.id}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${stageColors[i] ?? 'bg-surface-container text-on-surface-variant'}`}>
-              <span className="material-symbols-outlined text-xs">{s.icon}</span>
-              {s.name} · {count}
+            <span key={s.id} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${stageColors[i] ?? 'bg-surface-container text-on-surface-variant'}`}>
+              <span className="material-symbols-outlined text-xs">{s.icon}</span>{s.name} · {count}
             </span>
           );
         })}
       </div>
 
       {/* Member rows */}
-      <div className="divide-y divide-surface-container">
-        {myMembers.length === 0 ? (
-          <div className="text-center py-10 text-on-surface-variant">
-            <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">group_off</span>
+      <div className="divide-y divide-surface-container max-h-56 overflow-y-auto">
+        {allMyMembers.length === 0 ? (
+          <div className="text-center py-8 text-on-surface-variant">
             <p className="text-sm font-semibold">No members assigned yet</p>
           </div>
-        ) : myMembers.map(m => {
-          const progress = getProgress(m);
-          const stageName = getStageName(m);
-          const stIdx = m.currentStageIndex ?? 0;
+        ) : allMyMembers.map(m => {
+          const progress  = getProgress(m);
+          const stIdx     = m.currentStageIndex ?? 0;
+          const stageName = stages[stIdx]?.name ?? '—';
           return (
-            <div key={m.id} className="flex items-center gap-4 px-6 py-4 hover:bg-surface-container-low transition-colors">
-              <MemberAvatar member={m} size={40} />
+            <div key={m.id} className="flex items-center gap-4 px-6 py-3 hover:bg-surface-container-low transition-colors">
+              <MemberAvatar member={m} size={36} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-on-surface">{m.name}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${stageColors[stIdx] ?? 'bg-surface-container text-on-surface-variant'}`}>
-                    {stageName}
-                  </span>
-                  <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden max-w-[120px]">
-                    <div className={`h-full rounded-full ${progress === 100 ? 'bg-green-500' : 'bg-primary'}`}
-                      style={{ width: `${progress}%` }} />
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${stageColors[stIdx] ?? 'bg-surface-container text-on-surface-variant'}`}>{stageName}</span>
+                  <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden max-w-[100px]">
+                    <div className={`h-full rounded-full ${progress === 100 ? 'bg-green-500' : 'bg-primary'}`} style={{ width: `${progress}%` }} />
                   </div>
                   <span className="text-[10px] text-on-surface-variant font-semibold">{progress}%</span>
                 </div>
               </div>
-              <div className="text-right flex-shrink-0">
-                <span className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-full ${
-                  m.enrollmentStage === 'in_discipleship' ? 'bg-green-100 text-green-700' :
-                  m.enrollmentStage === 'approved' ? 'bg-primary-container text-primary' :
-                  'bg-amber-100 text-amber-700'
-                }`}>
-                  {m.enrollmentStage === 'in_discipleship' ? 'Blueprint' :
-                   m.enrollmentStage === 'approved' ? 'Approved' : 'New'}
-                </span>
-              </div>
+              <span className="text-xs text-on-surface-variant flex-shrink-0">{m.group || '—'}</span>
             </div>
           );
         })}
@@ -398,26 +331,27 @@ function LeaderGroupDashboard({ user, members, stages, groups }) {
 }
 
 // =============================================================================
-// MESSAGES PAGE (admin + leader)
+// MESSAGES PAGE (admin + leader view)
 // =============================================================================
 
 export function Messages({ groups, members = [], stages = [], messages = [], setMessages, user }) {
-  const [selectedKey, setSelectedKey]   = useState(null);
-  const [showCompose, setShowCompose]   = useState(false);
-  const [reply, setReply]               = useState('');
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [showCompose, setShowCompose] = useState(false);
+  const [reply, setReply]             = useState('');
   const bottomRef = useRef(null);
-  const isLeader = user?.role === 'leader';
+  const isLeader  = user?.role === 'leader';
 
-  const visible   = getVisibleMessages(user, messages, members, groups);
-  const threadMap = buildThreads(visible, members, groups, user);
+  // Build thread list from shared utilities
+  const visible    = getVisibleMessages(user, messages, members, groups);
+  const threadMap  = buildThreads(visible, members, groups, user);
   const threadList = Object.values(threadMap)
     .sort((a, b) => new Date(b.last?.timestamp ?? 0) - new Date(a.last?.timestamp ?? 0));
 
-  const active       = selectedKey ? threadMap[selectedKey] : null;
-  const threadMsgs   = [...(active?.msgs ?? [])].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  const totalUnread  = threadList.reduce((s, t) => s + t.unread, 0);
+  const active      = selectedKey ? threadMap[selectedKey] : null;
+  const threadMsgs  = [...(active?.msgs ?? [])].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const totalUnread = threadList.reduce((s, t) => s + t.unread, 0);
 
-  // Auto-select the most recent thread on mount (so the right pane isn't blank)
+  // Auto-select most recent thread
   useEffect(() => {
     if (threadList.length > 0 && !selectedKey) {
       setSelectedKey(threadList[0].key);
@@ -428,43 +362,41 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedKey, messages.length]);
 
-  const selectThread = (key) => {
+  const selectThread = key => {
     setSelectedKey(key);
+    // Mark messages in this thread as read
     setMessages(prev => prev.map(m => threadKey(m) === key ? { ...m, read: true } : m));
   };
 
   const sendReply = () => {
     if (!reply.trim() || !active) return;
-    const msg = {
+    setMessages(prev => [...prev, {
       id: Date.now(),
-      fromId: user?.id ?? 'admin',
+      fromId:   user?.id ?? 'admin',
       fromName: user?.name ?? 'Admin',
       fromRole: user?.role ?? 'admin',
-      toType: active.type,
-      toId:   active.toId,
-      toName: active.name,
-      body:   reply.trim(),
+      toType:   active.type,
+      toId:     active.toId,
+      toName:   active.name,
+      body:     reply.trim(),
       timestamp: new Date().toISOString(),
       read: true,
-    };
-    setMessages(prev => [...prev, msg]);
+    }]);
     setReply('');
   };
 
   const handleComposeSend = ({ toType, toId, toName, body }) => {
     const msg = {
       id: Date.now(),
-      fromId: user?.id ?? 'admin',
+      fromId:   user?.id ?? 'admin',
       fromName: user?.name ?? 'Admin',
       fromRole: user?.role ?? 'admin',
-      toType, toId, toName,
-      body,
+      toType, toId, toName, body,
       timestamp: new Date().toISOString(),
       read: true,
     };
     setMessages(prev => [...prev, msg]);
-    const k = threadKey(msg);
-    setSelectedKey(k);
+    setSelectedKey(threadKey(msg));
     setShowCompose(false);
   };
 
@@ -485,12 +417,9 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
         </button>
       </div>
 
-      {/* Leader group overview (only for leaders) */}
+      {/* Leader group overview */}
       {isLeader && (
-        <div className="px-8 pt-6 max-w-7xl mx-auto w-full">
-          <div className="mb-2">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-outline">My Group Overview</h2>
-          </div>
+        <div className="px-8 pt-6 max-w-7xl mx-auto w-full flex-shrink-0">
           <LeaderGroupDashboard user={user} members={members} stages={stages} groups={groups} />
         </div>
       )}
@@ -498,7 +427,7 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
       {/* Two-pane layout */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Left: Thread list ── */}
+        {/* Left: Thread list */}
         <div className="w-80 flex-shrink-0 border-r border-surface-container flex flex-col overflow-hidden bg-surface-container-lowest">
           <div className="px-4 py-3 border-b border-surface-container flex-shrink-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-outline">
@@ -549,7 +478,6 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
                           </>
                         ) : ''}
                       </p>
-                      {/* Thread type badge */}
                       <span className={`inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
                         thread.type === 'all'   ? 'bg-secondary-container text-secondary' :
                         thread.type === 'group' ? 'bg-tertiary-container text-tertiary' :
@@ -565,7 +493,7 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
           )}
         </div>
 
-        {/* ── Right: Conversation view ── */}
+        {/* Right: Conversation */}
         {!active ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center bg-surface p-8 text-on-surface-variant">
             <div className="w-20 h-20 rounded-2xl bg-surface-container flex items-center justify-center mb-6">
@@ -580,7 +508,6 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden bg-surface">
-
             {/* Thread header */}
             <div className="px-6 py-4 border-b border-surface-container bg-surface-container-lowest flex items-center gap-4 flex-shrink-0">
               <ThreadAvatar thread={active} size={40} />
@@ -601,7 +528,7 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
               </span>
             </div>
 
-            {/* Message bubbles */}
+            {/* Bubbles */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {threadMsgs.length === 0 ? (
                 <div className="text-center py-12 text-on-surface-variant">
@@ -610,7 +537,7 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
                   <p className="text-xs mt-1">Send the first one below!</p>
                 </div>
               ) : threadMsgs.map(msg => {
-                const isMe = String(msg.fromId) === String(user?.id);
+                const isMe         = String(msg.fromId) === String(user?.id);
                 const senderMember = !isMe ? members.find(m => String(m.id) === String(msg.fromId)) : null;
                 return (
                   <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -655,16 +582,10 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
             <div className="px-6 py-4 border-t border-surface-container bg-surface-container-lowest flex-shrink-0">
               <div className="flex gap-3 items-end">
                 <div className="flex-1 bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
-                  <textarea
-                    value={reply}
-                    onChange={e => setReply(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
-                    }}
-                    placeholder={`Reply to ${active.name}…`}
-                    rows={2}
-                    className="w-full bg-transparent text-sm outline-none resize-none text-on-surface placeholder:text-outline-variant"
-                  />
+                  <textarea value={reply} onChange={e => setReply(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
+                    placeholder={`Reply to ${active.name}…`} rows={2}
+                    className="w-full bg-transparent text-sm outline-none resize-none text-on-surface placeholder:text-outline-variant" />
                 </div>
                 <button onClick={sendReply} disabled={!reply.trim()}
                   className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
@@ -680,13 +601,8 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
       </div>
 
       {showCompose && (
-        <ComposeModal
-          user={user}
-          groups={groups}
-          members={members}
-          onClose={() => setShowCompose(false)}
-          onSend={handleComposeSend}
-        />
+        <ComposeModal user={user} groups={groups} members={members}
+          onClose={() => setShowCompose(false)} onSend={handleComposeSend} />
       )}
     </div>
   );

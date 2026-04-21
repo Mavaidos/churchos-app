@@ -25,7 +25,9 @@ import { mkOverride, createMemberDefaults } from "./lib/members";
 // ── Data ─────────────────────────────────────────────────────────────────────
 import {
   seedMembers, seedGroups, seedStages, seedRules, seedUsers, seedEvents, seedZones,
+  seedAttendanceRecords,
 } from "./data/seed";
+
 // ── Shared components ─────────────────────────────────────────────────────────
 import { Avatar, SmAvatar, MemberAvatar } from "./components/shared/Avatar";
 import { StatusBadge, StageBadge } from "./components/shared/StatusBadge";
@@ -645,13 +647,7 @@ export default function App() {
   // ── Messages — shared between admin/leader (Messages.jsx) and member portal
   // IMPORTANT: toId must match the memberId in seedUsers for the demo member
   // member@church.org → memberId:1 → Sarah Jenkins
-  const [messages, setMessages] = useState([
-    { id: 1, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'all',    toId: null, toName: 'All Members',   body: 'Welcome everyone! So glad to have you as part of our church family. Please reach out whenever you need anything.',               timestamp: '2026-04-10T09:00:00.000Z', read: true  },
-    { id: 2, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'group',  toId: 1,    toName: 'Worship Team',   body: 'Team, reminder that our group meeting is this Saturday at 10am in the main hall. Looking forward to seeing you all!',            timestamp: '2026-04-14T08:00:00.000Z', read: true  },
-    { id: 3, fromId: 'u1', fromName: 'Pastor James', fromRole: 'pastor', toType: 'member', toId: 1,    toName: 'Sarah Jenkins',  body: 'Hi Sarah, just checking in on how your journey is going. Let me know if you need anything!',                                    timestamp: '2026-04-15T08:30:00.000Z', read: false },
-    { id: 4, fromId: 'u3', fromName: 'Elena Rodriguez', fromRole: 'leader', toType: 'member', toId: 1, toName: 'Sarah Jenkins', body: 'Hi Sarah! Just a reminder about this Thursday\'s Worship Team rehearsal at 7pm. See you there 🎵',                             timestamp: '2026-04-16T10:00:00.000Z', read: false },
-  ]);
-
+  const [attendanceRecords, setAttendanceRecords] = useState(seedAttendanceRecords);
   // ── UI state ──────────────────────────────────────────────────────────────
   const [toastMsg, setToastMsg]                       = useState(null);
   const [showEnrolModal, setShowEnrolModal]           = useState(false);
@@ -755,17 +751,21 @@ export default function App() {
             <Route path="/groups" element={
   <RoleGuard roles={["pastor","admin","leader"]}>
     <Groups
-      groups={groups} setGroups={setGroups}
-      zones={zones}   setZones={setZones}
-      members={members} stages={stages} rules={rules}
-      users={users}   setUsers={setUsers}
-      toast={toast}
-    />
+     groups={groups} setGroups={setGroups}
+     zones={zones}   setZones={setZones}
+     members={members} setMembers={setMembers}
+     stages={stages} rules={rules}
+     users={users}   setUsers={setUsers}
+     toast={toast}
+   />
   </RoleGuard>
 } />
             <Route path="/attendance" element={
               <RoleGuard roles={["pastor","admin","leader"]}>
-                <Attendance members={members} groups={groups} />
+                <Attendance
+                  members={members} groups={groups} stages={stages}
+                  attendanceRecords={attendanceRecords}
+                  setAttendanceRecords={setAttendanceRecords} />
               </RoleGuard>
             } />
             <Route path="/events" element={

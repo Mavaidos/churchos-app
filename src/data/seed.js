@@ -206,3 +206,58 @@ export const seedEvents = [
   { id:8,  title:'Sunday Morning Service',     description:'Join us for worship, prayer, and the Word. All are welcome.',                               date:'2026-04-27', startTime:'09:00', endTime:'11:00', location:'Main Auditorium',           category:'service',   rsvpIds:[]        },
   { id:9,  title:'Leadership Connect',         description:'Monthly gathering for all group and team leaders. Dinner included.',                       date:'2026-05-05', startTime:'18:30', endTime:'20:30', location:'Boardroom',                 category:'team',      rsvpIds:[3,4,7]   },
 ];
+
+// Generates 8 weeks of realistic attendance records from existing group data
+function generateAttendanceSeeds(groups) {
+  const records = [];
+  let idCounter = 9000;
+
+  const serviceByType = {
+    home_cell:   'Home Cell Meeting',
+    sunday_team: 'Sunday Service',
+    ministry:    'Ministry Session',
+    department:  'Department Meeting',
+  };
+
+  const groupsWithMembers = groups.filter(g => g.memberIds.length > 0);
+
+  // Today is a fixed anchor so records are always relative
+  const anchor = new Date('2026-04-21');
+
+  for (let weekOffset = 7; weekOffset >= 0; weekOffset--) {
+    const sessionDate = new Date(anchor);
+    sessionDate.setDate(anchor.getDate() - weekOffset * 7);
+    const dateStr = sessionDate.toISOString().split('T')[0];
+
+    groupsWithMembers.forEach(g => {
+      // Realistic variance: 65–95% attendance rate, slightly different each week
+      // Use a deterministic pseudo-random so it's stable between page loads
+      const seed    = (g.id * 37 + weekOffset * 13) % 100;
+      const rate    = 0.65 + (seed / 100) * 0.30;
+
+      const present = g.memberIds.filter((_, i) => ((g.id * 7 + weekOffset * 3 + i * 11) % 10) < Math.round(rate * 10));
+      const absent  = g.memberIds.filter(id => !present.includes(id));
+
+      records.push({
+        id:            idCounter++,
+        groupId:       g.id,
+        groupName:     g.name,
+        date:          dateStr,
+        service:       serviceByType[g.type] ?? 'Session',
+        present,
+        absent,
+        total:         g.memberIds.length,
+        presentCount:  present.length,
+        attendanceRate: g.memberIds.length > 0
+          ? Math.round((present.length / g.memberIds.length) * 100)
+          : 0,
+        recordedBy:    'System (Seed)',
+        recordedAt:    sessionDate.toISOString(),
+      });
+    });
+  }
+
+  return records;
+}
+
+export const seedAttendanceRecords = generateAttendanceSeeds(seedGroups);

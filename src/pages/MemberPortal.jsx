@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../lib/auth";
 import { MemberAvatar } from "../components/shared/Avatar";
+import { threadKey, timeAgo } from "../lib/messages";
 
 // =============================================================================
 // CONSTANTS (portal-scoped, not shared globally)
@@ -37,7 +38,6 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
   const memberGroup = groups.find(g => g.memberIds?.includes(member?.id));
 
   // ── Filter messages relevant to this member ──────────────────────────────
-  // Catches: incoming direct, outgoing direct, group messages for their group
   const myMessages = messages.filter(msg => {
     const myId = String(member?.id);
     const isIncomingDirect = msg.toType === "member" && String(msg.toId) === myId;
@@ -46,18 +46,15 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
     return isIncomingDirect || isOutgoingDirect || isGroupMsg;
   });
 
-  // ── Build thread map ──────────────────────────────────────────────────────
-  // Thread key rules:
-  //   - group message  → "group-{groupId}"
-  //   - direct message → "direct" (all pastoral team ↔ member messages in one thread)
+  // ── Build thread map using shared threadKey ───────────────────────────────
+  // For the member's view, we rename 'member-{id}' threads to 'Pastoral Team'
   const threadMap = {};
   myMessages.forEach(msg => {
-    const key  = msg.toType === "group" ? `group-${msg.toId}` : "direct";
+    const key  = threadKey(msg);  // uses shared canonical key
     const name = msg.toType === "group" ? (memberGroup?.name ?? "My Group") : "Pastoral Team";
     const type = msg.toType === "group" ? "group" : "direct";
     if (!threadMap[key]) threadMap[key] = { key, name, type, msgs: [], unread: 0, last: null };
     threadMap[key].msgs.push(msg);
-    // Count as unread only if it was addressed to this member and not yet read
     const myId = String(member?.id);
     if (!msg.read && msg.toType === "member" && String(msg.toId) === myId) {
       threadMap[key].unread++;
@@ -88,11 +85,10 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
 
   const openThread = key => {
     setSelectedKey(key);
-    // Mark messages as read
+    // Mark messages as read using shared threadKey for consistency
     setMessages(prev => prev.map(m => {
-      const k = m.toType === "group" ? `group-${m.toId}` : "direct";
       const myId = String(member?.id);
-      return k === key && !m.read && m.toType === "member" && String(m.toId) === myId
+      return threadKey(m) === key && !m.read && m.toType === "member" && String(m.toId) === myId
         ? { ...m, read: true } : m;
     }));
   };
@@ -122,15 +118,7 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
     if (!activeThread) setSelectedKey("direct");
   };
 
-  const fmt = ts => {
-    const diff = Date.now() - new Date(ts).getTime();
-    const m    = Math.floor(diff / 60000);
-    if (m < 1)  return "Just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return new Date(ts).toLocaleDateString("en-ZA", { day: "numeric", month: "short" });
-  };
+  // timeAgo imported from lib/messages
 
   return (
     <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
@@ -235,7 +223,7 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
                     }`}>
                       {msg.body}
                     </div>
-                    <p className="text-[10px] text-outline-variant px-1">{fmt(msg.timestamp)}</p>
+                    <p className="text-[10px] text-outline-variant px-1">{timeAgo(msg.timestamp)}</p>
                   </div>
                 </div>
               );

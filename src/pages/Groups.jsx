@@ -440,7 +440,7 @@ function GroupCard({ g, members, onClick, onEdit, onDelete, canManage }) {
 // GROUPS PAGE
 // =============================================================================
 
-export function Groups({ groups, setGroups, zones, setZones, members, stages, rules, users, setUsers, toast }) {
+export function Groups({ groups, setGroups, zones, setZones, members, setMembers, stages, rules, users, setUsers, toast }) {
   const { user }  = useAuth();
   const navigate  = useNavigate();
   const canManage = hasPermission(user, 'assign');
@@ -492,7 +492,19 @@ export function Groups({ groups, setGroups, zones, setZones, members, stages, ru
   };
 
   const handleEditGroup   = g => { setEditingGroup(g); setEditForm({ name: g.name, description: g.description, schedule: g.schedule }); };
-  const handleSaveEdit    = () => { setGroups(prev => prev.map(g => g.id === editingGroup.id ? { ...g, ...editForm } : g)); setEditingGroup(null); toast('Group updated'); };
+  const handleSaveEdit    = () => {
+    const oldName = editingGroup.name;
+    const newName = editForm.name?.trim() ?? oldName;
+    setGroups(prev => prev.map(g => g.id === editingGroup.id ? { ...g, ...editForm, name: newName } : g));
+    // Sync member.group display name if the group was renamed
+    if (newName !== oldName && setMembers) {
+      setMembers(prev => prev.map(m =>
+        m.group === oldName ? { ...m, group: newName } : m
+      ));
+    }
+    setEditingGroup(null);
+    toast('Group updated');
+  };
   const handleDeleteGroup = g => { if (!window.confirm(`Delete "${g.name}"?`)) return; setGroups(prev => prev.filter(gr => gr.id !== g.id)); toast('Group deleted'); };
 
   const initiateAddMember = (member, group) => {
@@ -502,6 +514,14 @@ export function Groups({ groups, setGroups, zones, setZones, members, stages, ru
   };
   const confirmAddMember  = (member, group) => {
     const tgt = group || activeGroup;
+    // If home cell, remove member from any previous home cell first
+    if (tgt.type === 'home_cell') {
+      setGroups(prev => prev.map(g =>
+        g.type === 'home_cell' && g.id !== tgt.id && g.memberIds.includes(member.id)
+          ? { ...g, memberIds: g.memberIds.filter(id => id !== member.id) }
+          : g
+      ));
+    }
     setGroups(prev => prev.map(g => g.id === tgt.id ? { ...g, memberIds: [...new Set([...g.memberIds, member.id])] } : g));
     if (activeGroup?.id === tgt.id) setActiveGroup(prev => ({ ...prev, memberIds: [...new Set([...prev.memberIds, member.id])] }));
     setPendingMember(null); setEligResult(null); setShowAddMember(false);
