@@ -21,9 +21,17 @@ import { getLeaderGroupIds } from './auth';
 export function threadKey(msg) {
   if (msg.toType === 'all')   return 'broadcast';
   if (msg.toType === 'group') return `group-${msg.toId}`;
-  // direct: always key on the member's id regardless of direction
-  const memberId = msg.fromRole === 'member' ? msg.fromId : msg.toId;
-  return `member-${memberId}`;
+
+  // Direct message — key = direct-{staffUserId}-{memberId}
+  if (msg.fromRole === 'member') {
+    // Member reply: fromId = member, toId = staff user ID (set by MemberInbox)
+    if (msg.toId != null) return `direct-${msg.toId}-${msg.fromId}`;
+    // Legacy / unaddressed fallback — treated as unrouted
+    return `unrouted-${msg.fromId}`;
+  }
+
+  // Staff → member: fromId = staff user, toId = member
+  return `direct-${msg.fromId}-${msg.toId}`;
 }
 
 // =============================================================================
@@ -42,6 +50,7 @@ export function timeAgo(ts) {
   return new Date(ts).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
 }
 
+
 // =============================================================================
 // GET VISIBLE MESSAGES
 //
@@ -53,29 +62,52 @@ export function timeAgo(ts) {
 
 export function getVisibleMessages(user, messages, members, groups) {
   if (!user) return [];
-  if (user.role === 'pastor' || user.role === 'admin') return messages;
 
+  // ── Pastor: full oversight, sees everything ──────────────────────────────
+  if (user.role === 'pastor') return messages;
+
+  // ── Admin: broadcasts + group messages + OWN direct threads only ─────────
+  if (user.role === 'admin') {
+    return messages.filter(msg => {
+      if (msg.toType === 'all')   return true;  // broadcasts visible to admin
+      if (msg.toType === 'group') return true;  // admin can see all group messages
+
+      if (msg.toType === 'member') {
+        // Only threads where admin is the staff side of the conversation
+        if (String(msg.fromId) === String(user.id)) return true;
+        if (msg.fromRole === 'member' && String(msg.toId) === String(user.id)) return true;
+        // Unrouted first contact from a member — admin is the catch-all inbox
+        if (msg.fromRole === 'member' && msg.toId == null) return true;
+        return false;
+      }
+      return false;
+    });
+  }
+
+  // ── Leader: own group threads + own direct threads only ──────────────────
   if (user.role === 'leader') {
-    const leaderGroupIds  = getLeaderGroupIds(user);          // array of group IDs
-    const myGroups        = groups.filter(g => leaderGroupIds.includes(g.id));
-    const myMemberIdSet   = new Set(
-      myGroups.flatMap(g => (g.memberIds ?? []).map(String))
-    );
+    const leaderGroupIds = getLeaderGroupIds(user);
 
     return messages.filter(msg => {
-      // Group thread for any of this leader's groups
-      if (msg.toType === 'group' && leaderGroupIds.includes(msg.toId)) return true;
-      // Direct thread where the member side is one of this leader's members
-      if (msg.toType === 'member') {
-        const mId = msg.fromRole === 'member' ? String(msg.fromId) : String(msg.toId);
-        return myMemberIdSet.has(mId);
+      // Group messages — only for groups this leader manages
+      if (msg.toType === 'group') {
+        return leaderGroupIds.includes(msg.toId);
       }
+
+      if (msg.toType === 'member') {
+        // Only direct threads this leader personally participated in
+        if (String(msg.fromId) === String(user.id)) return true;
+        if (msg.fromRole === 'member' && String(msg.toId) === String(user.id)) return true;
+        return false;
+      }
+
       return false;
     });
   }
 
   return [];
 }
+
 
 // =============================================================================
 // BUILD THREAD MAP
@@ -89,30 +121,29 @@ export function buildThreads(visibleMessages, members, groups, user) {
 
   visibleMessages.forEach(msg => {
     const key = threadKey(msg);
-
     if (!map[key]) {
-      let name   = '';
-      let member = null;
-      let group  = null;
-      // For direct threads, toId is ALWAYS the member's (non-admin) id
-      // so replies from admin correctly target the member even when the
-      // member's outgoing message has toId: null
-      let resolvedToId = msg.toId;
+      let name         = '';
+      let member       = null;
+      let group        = null;
+      let resolvedToId = msg.toId;  // will be overridden below for direct threads
 
       if (msg.toType === 'all') {
         name = 'All Members';
+
       } else if (msg.toType === 'group') {
         group = groups.find(g => g.id === msg.toId);
         name  = group?.name ?? msg.toName ?? 'Group';
+
       } else {
-        // direct — member side is always the non-admin
+        // Direct thread — display the MEMBER's name (staff is always the viewer)
+        // member side = fromId when member sent, toId when staff sent
         const mId = msg.fromRole === 'member' ? msg.fromId : msg.toId;
-        member    = members.find(m => String(m.id) === String(mId));
-        name      = member?.name
+        member       = members.find(m => String(m.id) === String(mId));
+        name         = member?.name
           ?? (msg.fromRole === 'member' ? msg.fromName : msg.toName)
           ?? 'Member';
-        // Always use the member's id, never null
-        resolvedToId = mId != null ? Number(mId) : msg.toId;
+        // toId stored on thread = member's numeric id so replies go to the right person
+        resolvedToId = mId != null ? Number(mId) : null;
       }
 
       map[key] = {
@@ -122,8 +153,7 @@ export function buildThreads(visibleMessages, members, groups, user) {
       };
     }
 
-    // Keep toId resolved — if a later message in the thread has the real
-    // member id, update it (handles case where member message comes first)
+    // If an earlier message had a null toId, patch it once we have the real value
     if (msg.toType === 'member' && map[key].toId == null) {
       const mId = msg.fromRole === 'member' ? msg.fromId : msg.toId;
       if (mId != null) map[key].toId = Number(mId);
@@ -131,12 +161,12 @@ export function buildThreads(visibleMessages, members, groups, user) {
 
     map[key].msgs.push(msg);
 
-    // Unread = not read AND not sent by the current user
+    // Unread = not read AND not sent by the current viewer
     if (!msg.read && String(msg.fromId) !== String(user?.id)) {
       map[key].unread++;
     }
 
-    // Track most recent message for sorting
+    // Most recent message for sorting
     if (!map[key].last || new Date(msg.timestamp) > new Date(map[key].last.timestamp)) {
       map[key].last = msg;
     }

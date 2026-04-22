@@ -242,95 +242,6 @@ function ComposeModal({ user, groups, members, onClose, onSend }) {
 }
 
 // =============================================================================
-// LEADER GROUP DASHBOARD
-// Shown above the thread list when a leader is logged in.
-// Covers ALL groups the leader manages.
-// =============================================================================
-
-function LeaderGroupDashboard({ user, members, stages, groups }) {
-  const leaderGroupIds = getLeaderGroupIds(user);
-  const myGroups       = groups.filter(g => leaderGroupIds.includes(g.id));
-  if (myGroups.length === 0) return null;
-
-  const stageColors = ['bg-blue-100 text-blue-700','bg-cyan-100 text-cyan-700','bg-violet-100 text-violet-700','bg-green-100 text-green-700'];
-
-  const allMyMembers = members.filter(m =>
-    myGroups.some(g => g.memberIds.includes(m.id))
-  );
-
-  const getProgress = m => {
-    const s = stages[m.currentStageIndex ?? 0];
-    if (!s) return 0;
-    const tasks = m.tasks[s.id] || [];
-    return s.requirements.length > 0 ? Math.round((tasks.filter(Boolean).length / s.requirements.length) * 100) : 100;
-  };
-
-  return (
-    <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden mb-6">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-surface-container flex items-center gap-4">
-        <div className="flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Your Groups</p>
-          <div className="flex gap-2 flex-wrap mt-1">
-            {myGroups.map(g => (
-              <span key={g.id} className="flex items-center gap-1.5 text-xs font-bold text-on-surface bg-surface-container px-2.5 py-1 rounded-full">
-                <span className="material-symbols-outlined text-xs">{g.icon ?? 'groups'}</span>{g.name}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-3xl font-extrabold font-headline text-primary">{allMyMembers.length}</p>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-outline">Members</p>
-        </div>
-      </div>
-
-      {/* Stage pills across all groups */}
-      <div className="px-6 py-3 border-b border-surface-container flex flex-wrap gap-2">
-        {stages.map((s, i) => {
-          const count = allMyMembers.filter(m => (m.currentStageIndex ?? 0) === i).length;
-          if (count === 0) return null;
-          return (
-            <span key={s.id} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${stageColors[i] ?? 'bg-surface-container text-on-surface-variant'}`}>
-              <span className="material-symbols-outlined text-xs">{s.icon}</span>{s.name} · {count}
-            </span>
-          );
-        })}
-      </div>
-
-      {/* Member rows */}
-      <div className="divide-y divide-surface-container max-h-56 overflow-y-auto">
-        {allMyMembers.length === 0 ? (
-          <div className="text-center py-8 text-on-surface-variant">
-            <p className="text-sm font-semibold">No members assigned yet</p>
-          </div>
-        ) : allMyMembers.map(m => {
-          const progress  = getProgress(m);
-          const stIdx     = m.currentStageIndex ?? 0;
-          const stageName = stages[stIdx]?.name ?? '—';
-          return (
-            <div key={m.id} className="flex items-center gap-4 px-6 py-3 hover:bg-surface-container-low transition-colors">
-              <MemberAvatar member={m} size={36} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-on-surface">{m.name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${stageColors[stIdx] ?? 'bg-surface-container text-on-surface-variant'}`}>{stageName}</span>
-                  <div className="flex-1 h-1.5 bg-surface-container rounded-full overflow-hidden max-w-[100px]">
-                    <div className={`h-full rounded-full ${progress === 100 ? 'bg-green-500' : 'bg-primary'}`} style={{ width: `${progress}%` }} />
-                  </div>
-                  <span className="text-[10px] text-on-surface-variant font-semibold">{progress}%</span>
-                </div>
-              </div>
-              <span className="text-xs text-on-surface-variant flex-shrink-0">{m.group || '—'}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
 // MESSAGES PAGE (admin + leader view)
 // =============================================================================
 
@@ -339,7 +250,6 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
   const [showCompose, setShowCompose] = useState(false);
   const [reply, setReply]             = useState('');
   const bottomRef = useRef(null);
-  const isLeader  = user?.role === 'leader';
 
   // Build thread list from shared utilities
   const visible    = getVisibleMessages(user, messages, members, groups);
@@ -401,7 +311,7 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
   };
 
   return (
-    <div className="fade-in flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
+    <div className="fade-in flex flex-col h-screen">
 
       {/* Top bar */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8 flex-shrink-0">
@@ -416,13 +326,6 @@ export function Messages({ groups, members = [], stages = [], messages = [], set
           <span className="material-symbols-outlined text-lg">edit_square</span>New Message
         </button>
       </div>
-
-      {/* Leader group overview */}
-      {isLeader && (
-        <div className="px-8 pt-6 max-w-7xl mx-auto w-full flex-shrink-0">
-          <LeaderGroupDashboard user={user} members={members} stages={stages} groups={groups} />
-        </div>
-      )}
 
       {/* Two-pane layout */}
       <div className="flex flex-1 overflow-hidden">

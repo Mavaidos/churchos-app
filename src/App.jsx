@@ -46,6 +46,7 @@ import { Attendance }   from "./pages/Attendance";
 import { Settings }     from "./pages/Settings";
 import { MemberPortal } from "./pages/MemberPortal";
 
+
 // =============================================================================
 // UTILITY — Homecell suggestion (also used by AddMemberModal below)
 // TODO: move to src/lib/members.js when you have a chance
@@ -56,7 +57,7 @@ function suggestGroupForAddress(address, members, groups) {
   const addr  = address.toLowerCase();
   const words = addr.split(/[\s,]+/).filter(w => w.length > 3);
   if (words.length === 0) return null;
-  const scored = groups.map(g => {
+   const scored = groups.map(g => {
     const groupMembers = members.filter(m => g.memberIds?.includes(m.id) && m.homeAddress);
     const score = groupMembers.reduce((s, m) => {
       const mAddr = m.homeAddress.toLowerCase();
@@ -642,11 +643,26 @@ export default function App() {
   const [rules,   setRules]     = useState(seedRules);
   const [users,   setUsers]     = useState(seedUsers);
   const [zones, setZones] = useState(seedZones);
+  const [churchSettings, setChurchSettings] = useState({
+    name:        'ChurchOS',
+    tagline:     'Sanctuary Management',
+    pastorName:  '',
+    founded:     '',
+    email:       'pastor@church.org',
+    adminEmail:  'admin@church.org',
+    phone:       '',
+    website:     '',
+    address:     '',
+    logoUrl:     null,
+    primaryColor: '#2d3b4e',
+  });
+
 
 
   // ── Messages — shared between admin/leader (Messages.jsx) and member portal
   // IMPORTANT: toId must match the memberId in seedUsers for the demo member
   // member@church.org → memberId:1 → Sarah Jenkins
+  const [messages, setMessages]                   = useState([]);
   const [attendanceRecords, setAttendanceRecords] = useState(seedAttendanceRecords);
   // ── UI state ──────────────────────────────────────────────────────────────
   const [toastMsg, setToastMsg]                       = useState(null);
@@ -707,11 +723,12 @@ export default function App() {
     return (
       <AuthContext.Provider value={{ user, login, logout }}>
         <MemberPortal
-          members={members} stages={stages} setMembers={setMembers}
-          groups={groups}   events={events}  setEvents={setEvents}
-          messages={messages} setMessages={setMessages}
-          toast={toast} onLogout={logout}
-        />
+  users={users}
+  members={members} stages={stages} setMembers={setMembers}
+  groups={groups}   events={events}  setEvents={setEvents}
+  messages={messages} setMessages={setMessages}
+  toast={toast} onLogout={logout}
+/>
         {toastMsg && <Toast msg={toastMsg} onDone={() => setToastMsg(null)} />}
       </AuthContext.Provider>
     );
@@ -721,11 +738,12 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       <div className="flex min-h-screen">
-        <Sidebar user={user} onLogout={logout} />
+         <Sidebar user={user} onLogout={logout} churchSettings={churchSettings} />
         <div className="ml-64 flex-1 min-h-screen flex flex-col">
           <Routes>
             <Route path="/" element={
               <Dashboard members={members} groups={groups} stages={stages}
+                churchSettings={churchSettings}
                 setSelectedMember={() => {}}
                 onAddMember={hasPermission(user, "enrol") ? () => setShowEnrolModal(true) : null} />
             } />
@@ -784,7 +802,10 @@ export default function App() {
             } />
             <Route path="/settings" element={
               <RoleGuard roles={["pastor","admin"]}>
-                <Settings toast={toast} />
+                <Settings
+                  toast={toast}
+                  churchSettings={churchSettings}
+                  setChurchSettings={setChurchSettings} />
               </RoleGuard>
             } />
             <Route path="*" element={<Navigate to="/" replace />} />

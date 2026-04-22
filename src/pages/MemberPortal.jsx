@@ -34,31 +34,79 @@ const SERVICES = [
 // MEMBER INBOX — Messages tab for the member portal
 // =============================================================================
 
-function MemberInbox({ member, members, groups, messages, setMessages }) {
+function MemberInbox({ member, members, groups, users = [], messages, setMessages }) {
   const memberGroup = groups.find(g => g.memberIds?.includes(member?.id));
+  const myId = String(member?.id);
+
+  // ── Build list of people this member can reach out to ─────────────────────
+  // mentor → cell leader → serving-team leaders → pastors → admins
+  const contacts = (() => {
+    const list = [];
+    const seen = new Set();
+    const push = (staffUser, relationship) => {
+      if (!staffUser || seen.has(staffUser.id)) return;
+      seen.add(staffUser.id);
+      const linkedMember = members.find(m => m.id === staffUser.memberId);
+      list.push({
+        userId:       staffUser.id,
+        memberId:     staffUser.memberId,
+        name:         linkedMember?.name ?? staffUser.name ?? staffUser.email,
+        member:       linkedMember ?? null,
+        role:         staffUser.role,
+        relationship,
+      });
+    };
+
+    // Mentor
+    if (member?.mentorId) {
+      push(users.find(u => u.memberId === member.mentorId), "Mentor");
+    }
+    // Home-cell leader
+    if (memberGroup?.leaderId && memberGroup.leaderId !== member?.id) {
+      push(users.find(u => u.memberId === memberGroup.leaderId), "Cell Leader");
+    }
+    // Any other group this member is in (serving team, ministry, etc.)
+    groups
+      .filter(g => g.id !== memberGroup?.id && g.memberIds?.includes(member?.id) && g.leaderId && g.leaderId !== member?.id)
+      .forEach(g => push(users.find(u => u.memberId === g.leaderId), `${g.name} Leader`));
+    // Pastors and admins — always available
+    users.filter(u => u.role === "pastor").forEach(u => push(u, "Pastor"));
+    users.filter(u => u.role === "admin").forEach(u => push(u, "Admin"));
+    return list;
+  })();
 
   // ── Filter messages relevant to this member ──────────────────────────────
   const myMessages = messages.filter(msg => {
-    const myId = String(member?.id);
     const isIncomingDirect = msg.toType === "member" && String(msg.toId) === myId;
     const isOutgoingDirect = msg.fromRole === "member" && String(msg.fromId) === myId;
     const isGroupMsg = memberGroup && msg.toType === "group" && msg.toId === memberGroup.id;
     return isIncomingDirect || isOutgoingDirect || isGroupMsg;
   });
 
-  // ── Build thread map using shared threadKey ───────────────────────────────
-  // For the member's view, we rename 'member-{id}' threads to 'Pastoral Team'
+  // ── Build one thread per STAFF PERSON or group ───────────────────────────
   const threadMap = {};
   myMessages.forEach(msg => {
-    const key  = threadKey(msg);  // uses shared canonical key
-    const name = msg.toType === "group" ? (memberGroup?.name ?? "My Group") : "Pastoral Team";
-    const type = msg.toType === "group" ? "group" : "direct";
-    if (!threadMap[key]) threadMap[key] = { key, name, type, msgs: [], unread: 0, last: null };
-    threadMap[key].msgs.push(msg);
-    const myId = String(member?.id);
-    if (!msg.read && msg.toType === "member" && String(msg.toId) === myId) {
-      threadMap[key].unread++;
+    let key, name, type, staffUserId;
+
+    if (msg.toType === "group") {
+      key = `group-${msg.toId}`;
+      name = memberGroup?.name ?? "My Group";
+      type = "group";
+      staffUserId = null;
+    } else {
+      const sId = msg.fromRole === "member" ? msg.toId : msg.fromId;
+      key = sId != null ? `staff-${sId}` : "staff-pastoral";
+      name = msg.fromRole === "member" ? msg.toName : msg.fromName;
+      type = "direct";
+      staffUserId = sId ?? null;
     }
+
+    if (!threadMap[key]) {
+      threadMap[key] = { key, name: name ?? "Pastoral Team", type, staffUserId, msgs: [], unread: 0, last: null };
+    }
+    if (name && threadMap[key].name === "Pastoral Team") threadMap[key].name = name;
+    threadMap[key].msgs.push(msg);
+    if (!msg.read && msg.toType === "member" && String(msg.toId) === myId) threadMap[key].unread++;
     if (!threadMap[key].last || new Date(msg.timestamp) > new Date(threadMap[key].last.timestamp)) {
       threadMap[key].last = msg;
     }
@@ -68,66 +116,139 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
     (a, b) => new Date(b.last?.timestamp ?? 0) - new Date(a.last?.timestamp ?? 0)
   );
 
-  const [selectedKey, setSelectedKey] = useState(null);
-  const [reply, setReply]             = useState("");
-  const [newMessage, setNewMessage]   = useState("");
+  // ── State ────────────────────────────────────────────────────────────────
+  const [selectedKey, setSelectedKey]   = useState(null);
+  const [composeTarget, setComposeTarget] = useState(null);  // new conversation target
+  const [reply, setReply]               = useState("");
   const bottomRef = useRef(null);
 
-  // Auto-select first thread on mount / when threads appear
   useEffect(() => {
-    if (threads.length > 0 && !selectedKey) setSelectedKey(threads[0].key);
+    if (threads.length > 0 && !selectedKey && !composeTarget) setSelectedKey(threads[0].key);
   }, [threads.length]);
 
-  // Scroll to bottom when thread changes or a new message arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selectedKey, messages.length]);
 
+  // ── Actions ──────────────────────────────────────────────────────────────
   const openThread = key => {
     setSelectedKey(key);
-    // Mark messages as read using shared threadKey for consistency
+    setComposeTarget(null);
     setMessages(prev => prev.map(m => {
-      const myId = String(member?.id);
-      return threadKey(m) === key && !m.read && m.toType === "member" && String(m.toId) === myId
-        ? { ...m, read: true } : m;
+      if (m.toType !== "member" || String(m.toId) !== myId || m.read) return m;
+      const sId = m.fromId;
+      const mKey = sId != null ? `staff-${sId}` : "staff-pastoral";
+      return mKey === key ? { ...m, read: true } : m;
     }));
   };
 
+  const pickContact = c => {
+    const existingKey = `staff-${c.userId}`;
+    if (threadMap[existingKey]) {
+      openThread(existingKey);
+      return;
+    }
+    setComposeTarget(c);
+    setSelectedKey(null);
+    setReply("");
+  };
+
   const activeThread = selectedKey ? threadMap[selectedKey] : null;
-  const threadMsgs   = [...(activeThread?.msgs ?? [])].sort(
+  const threadMsgs = [...(activeThread?.msgs ?? [])].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );
 
   const sendReply = () => {
-    const body = (activeThread ? reply : newMessage).trim();
+    const body = reply.trim();
     if (!body) return;
-    const isGroup = activeThread?.type === "group";
+
+    let isGroup, recipientId, recipientName;
+
+    if (activeThread) {
+      isGroup       = activeThread.type === "group";
+      recipientId   = isGroup ? memberGroup?.id : activeThread.staffUserId;
+      recipientName = isGroup ? (memberGroup?.name ?? "Group") : activeThread.name;
+    } else if (composeTarget) {
+      isGroup       = false;
+      recipientId   = composeTarget.userId;
+      recipientName = composeTarget.name;
+    } else {
+      return; // no target — shouldn't happen with the new UI
+    }
+
     setMessages(prev => [...prev, {
       id: Date.now(),
-      fromId:   member?.id,
-      fromName: member?.name,
-      fromRole: "member",
-      toType:   isGroup ? "group"  : "member",
-      toId:     isGroup ? memberGroup?.id : null,
-      toName:   isGroup ? (memberGroup?.name ?? "Group") : "Admin",
+      fromId:    member?.id,
+      fromName:  member?.name,
+      fromRole:  "member",
+      toType:    isGroup ? "group" : "member",
+      toId:      recipientId,
+      toName:    recipientName,
       body,
       timestamp: new Date().toISOString(),
       read: false,
     }]);
-    if (activeThread) setReply(""); else setNewMessage("");
-    if (!activeThread) setSelectedKey("direct");
+    setReply("");
+
+    // If we just started a new conversation, switch into that thread next render
+    if (!activeThread && composeTarget) {
+      setSelectedKey(`staff-${composeTarget.userId}`);
+      setComposeTarget(null);
+    }
   };
 
-  // timeAgo imported from lib/messages
+  // ── Render helpers ───────────────────────────────────────────────────────
+  const relationshipIcon = role =>
+    role === "pastor" ? "church" :
+    role === "admin"  ? "admin_panel_settings" :
+    role === "leader" ? "star" : "person";
 
   return (
     <div className="p-4 max-w-lg mx-auto space-y-4 fade-in">
       <div>
         <h2 className="text-xl font-extrabold font-headline text-on-surface">Messages</h2>
-        <p className="text-xs text-on-surface-variant mt-0.5">Stay connected with your pastor and group leader.</p>
+        <p className="text-xs text-on-surface-variant mt-0.5">Stay connected with your pastor, leader, and mentor.</p>
       </div>
 
-      {/* Thread selector pills — only shown when there are multiple threads */}
+      {/* ── Contacts — always visible so member can start a conversation ── */}
+      {contacts.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-2">Who do you want to message?</p>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {contacts.map(c => {
+              const existingKey = `staff-${c.userId}`;
+              const hasThread   = !!threadMap[existingKey];
+              const isActive    = selectedKey === existingKey || composeTarget?.userId === c.userId;
+              return (
+                <button key={c.userId} onClick={() => pickContact(c)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-2xl flex-shrink-0 transition-all border-2 ${
+                    isActive
+                      ? "border-primary bg-primary-container/30"
+                      : "border-outline-variant/10 bg-surface-container-lowest hover:border-primary/20"
+                  }`}>
+                  {c.member ? (
+                    <MemberAvatar member={c.member} size={32} />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
+                      <span className="material-symbols-outlined text-primary ms-filled" style={{ fontSize: 16 }}>
+                        {relationshipIcon(c.role)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-on-surface whitespace-nowrap">{c.name}</p>
+                    <p className="text-[9px] font-bold text-outline uppercase tracking-wider">
+                      {c.relationship}{hasThread && " · open"}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Existing thread pills (only when there's more than one) ── */}
       {threads.length > 1 && (
         <div className="flex gap-2 flex-wrap">
           {threads.map(t => (
@@ -138,7 +259,7 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
                   : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high"
               }`}>
               <span className="material-symbols-outlined text-xs">
-                {t.type === "group" ? "diversity_3" : "church"}
+                {t.type === "group" ? "diversity_3" : "forum"}
               </span>
               {t.name}
               {t.unread > 0 && (
@@ -149,33 +270,63 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
         </div>
       )}
 
-      {/* Empty state — no messages yet */}
-      {threads.length === 0 && (
-        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
-          <div className="p-6 text-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">chat_bubble_outline</span>
-            <p className="font-semibold text-sm">No messages yet</p>
-            <p className="text-xs mt-1 opacity-70">Send your first message below.</p>
+      {/* ── Composing a brand-new conversation ── */}
+      {composeTarget && !activeThread && (
+        <div className="bg-surface-container-lowest rounded-2xl border-2 border-primary/20 overflow-hidden">
+          <div className="px-4 py-3 border-b border-surface-container flex items-center gap-3 bg-primary-container/20">
+            {composeTarget.member ? (
+              <MemberAvatar member={composeTarget.member} size={36} />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-primary ms-filled text-base">
+                  {relationshipIcon(composeTarget.role)}
+                </span>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-on-surface truncate">New message to {composeTarget.name}</p>
+              <p className="text-[10px] font-bold text-primary uppercase tracking-wider">{composeTarget.relationship}</p>
+            </div>
+            <button onClick={() => setComposeTarget(null)} className="p-1.5 hover:bg-surface-container rounded-full transition-colors">
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
           </div>
-          <div className="px-4 pb-4 border-t border-surface-container pt-3">
+          <div className="p-4">
             <div className="flex gap-2 items-end">
-              <textarea value={newMessage} onChange={e => setNewMessage(e.target.value)}
+              <textarea value={reply} onChange={e => setReply(e.target.value)} autoFocus
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); }}}
-                placeholder="Message your pastoral team…" rows={3}
+                placeholder={`Say hi to ${composeTarget.name.split(" ")[0]}…`} rows={3}
                 className="flex-1 bg-surface-container-low border border-outline-variant/20 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
-              <button onClick={sendReply} disabled={!newMessage.trim()}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${newMessage.trim() ? "bg-primary text-on-primary" : "bg-surface-container-high text-outline cursor-not-allowed"}`}>
+              <button onClick={sendReply} disabled={!reply.trim()}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${reply.trim() ? "bg-primary text-on-primary hover:bg-primary-dim" : "bg-surface-container-high text-outline cursor-not-allowed"}`}>
                 <span className="material-symbols-outlined text-sm ms-filled">send</span>
               </button>
             </div>
+            <p className="text-[10px] text-outline-variant mt-1.5">Enter to send · Shift+Enter for new line</p>
           </div>
         </div>
       )}
 
-      {/* Active conversation */}
+      {/* ── Empty state — no threads AND no contacts (extremely new member) ── */}
+      {threads.length === 0 && !composeTarget && contacts.length === 0 && (
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 p-6 text-center text-on-surface-variant">
+          <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">chat_bubble_outline</span>
+          <p className="font-semibold text-sm">No one to message yet</p>
+          <p className="text-xs mt-1 opacity-70">Once your pastor assigns a mentor or group, they'll show up here.</p>
+        </div>
+      )}
+
+      {/* ── Empty state — no threads yet but contacts available ── */}
+      {threads.length === 0 && !composeTarget && contacts.length > 0 && (
+        <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 p-6 text-center text-on-surface-variant">
+          <span className="material-symbols-outlined text-3xl mb-2 block text-outline-variant">forum</span>
+          <p className="font-semibold text-sm">Pick someone above to send your first message</p>
+        </div>
+      )}
+
+      {/* ── Active conversation ── */}
       {activeThread && (
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/5 overflow-hidden">
-          {/* Header */}
           <div className="px-4 py-3 border-b border-surface-container flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center flex-shrink-0">
               <span className="material-symbols-outlined text-primary ms-filled text-base">
@@ -185,12 +336,11 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
             <div>
               <p className="text-sm font-bold text-on-surface">{activeThread.name}</p>
               <p className="text-xs text-on-surface-variant">
-                {activeThread.type === "group" ? "Group thread" : "Direct with pastoral team"}
+                {activeThread.type === "group" ? "Group thread" : `Direct with ${activeThread.name}`}
               </p>
             </div>
           </div>
 
-          {/* Bubbles */}
           <div className="p-4 space-y-3 max-h-80 overflow-y-auto">
             {threadMsgs.length === 0 ? (
               <p className="text-center text-xs text-outline-variant py-4">No messages yet — say hi!</p>
@@ -231,7 +381,6 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
             <div ref={bottomRef} />
           </div>
 
-          {/* Reply box */}
           <div className="px-4 py-3 border-t border-surface-container">
             <div className="flex gap-2 items-end">
               <textarea value={reply} onChange={e => setReply(e.target.value)}
@@ -243,12 +392,12 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
                 <span className="material-symbols-outlined text-sm ms-filled">send</span>
               </button>
             </div>
-            <p className="text-[10px] text-outline-variant mt-1">Enter to send · Shift+Enter for new line</p>
+            <p className="text-[10px] text-outline-variant mt-1 px-1">Enter to send · Shift+Enter for new line</p>
           </div>
         </div>
       )}
 
-      {/* Church contacts */}
+      {/* Church contacts block (unchanged) */}
       <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/5 p-4">
         <p className="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Church Contacts</p>
         {[
@@ -274,6 +423,7 @@ function MemberInbox({ member, members, groups, messages, setMessages }) {
 // =============================================================================
 
 export function MemberPortal({
+  users = [],  
   members, stages, setMembers, groups,
   events = [], setEvents,
   messages = [], setMessages,
@@ -747,14 +897,15 @@ export function MemberPortal({
 
         {/* ══ MESSAGES TAB ════════════════════════════════════════════════ */}
         {activeTab === "inbox" && (
-          <MemberInbox
-            member={member}
-            members={members}
-            groups={groups}
-            messages={messages}
-            setMessages={setMessages}
-          />
-        )}
+  <MemberInbox
+    member={member}
+    members={members}
+    groups={groups}
+    users={users}                    // ← add this
+    messages={messages}
+    setMessages={setMessages}
+  />
+)}
 
         {/* ══ MY INFO TAB ═════════════════════════════════════════════════ */}
         {activeTab === "info" && (

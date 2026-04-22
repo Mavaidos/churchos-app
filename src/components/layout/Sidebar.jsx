@@ -13,25 +13,34 @@ const allNav = [
   { to: '/settings',   icon: 'settings',                 label: 'Settings',   roles: ['pastor', 'admin']           },
 ];
 
-export function Sidebar({ user, onLogout }) {
+export function Sidebar({ user, onLogout, churchSettings }) {
   const { branding } = useBranding();
   const nav  = allNav.filter(n => !user || n.roles.includes(user.role));
   const meta = ROLE_META[user?.role] ?? ROLE_META.member;
 
+  // churchSettings takes priority over branding context
+  const orgName = churchSettings?.name    || branding.orgName || 'ChurchOS';
+  const tagline = churchSettings?.tagline || branding.tagline || 'Sanctuary Management';
+  const logoUrl = churchSettings?.logoUrl ?? null;
+
   return (
     <aside className="h-screen w-64 fixed left-0 top-0 bg-slate-50 flex flex-col p-4 gap-1 border-r border-slate-100 z-40">
 
-      {/* Logo block — reads from branding context */}
+      {/* Logo block */}
       <div className="flex items-center gap-3 px-2 py-4 mb-2">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-on-primary flex-shrink-0"
-          style={{ background: `rgb(var(--c-primary))` }}>
-          {branding.logoType === 'icon'
-            ? <span className="material-symbols-outlined ms-filled text-lg">{branding.logoIcon}</span>
-            : <span className="font-black text-sm">{branding.orgName.slice(0, 2).toUpperCase()}</span>}
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-on-primary flex-shrink-0 overflow-hidden"
+          style={{ background: logoUrl ? 'transparent' : `rgb(var(--c-primary))` }}>
+          {logoUrl ? (
+            <img src={logoUrl} alt={orgName} className="w-9 h-9 object-cover rounded-xl" />
+          ) : branding.logoType === 'icon' ? (
+            <span className="material-symbols-outlined ms-filled text-lg">{branding.logoIcon ?? 'church'}</span>
+          ) : (
+            <span className="font-black text-sm">{orgName.slice(0, 2).toUpperCase()}</span>
+          )}
         </div>
         <div className="min-w-0">
-          <h2 className="text-base font-extrabold text-slate-900 tracking-tight font-headline truncate">{branding.orgName}</h2>
-          <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold truncate">{branding.tagline}</p>
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight font-headline truncate">{orgName}</h2>
+          <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold truncate">{tagline}</p>
         </div>
       </div>
 

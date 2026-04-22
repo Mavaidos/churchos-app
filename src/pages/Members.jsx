@@ -12,6 +12,7 @@ import {
   autoMapColumns, buildMembersFromImport,
 } from '../lib/reports';
 
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 function suggestGroupForAddress(address, members, groups) {
   if (!address || address.trim().length < 4) return null;
@@ -264,26 +265,28 @@ function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
 
   // BUG FIX 3: uses imported createMemberDefaults + mkOverride, NOT require()
   const handleConfirm = () => {
-    const colors = ['#d5e3fd', '#d3e4fe', '#cfdef5', '#dde3e9'];
-    const newMembers = parsed.map(p => {
-      const fullName = `${p.firstName} ${p.surname}`.trim();
-      const initials = [p.firstName?.[0], p.surname?.[0]].filter(Boolean).join('').toUpperCase();
-      return createMemberDefaults({
-        name: fullName, initials,
-        avatarColor: colors[Math.floor(Math.random() * colors.length)],
-        joinDate: new Date().toISOString().split('T')[0],
-        currentStageIndex: 0, enrollmentStage: 'new_applicant', status: 'active',
-        email: p.email, phone: p.phone, gender: p.gender,
-        maritalStatus: p.maritalStatus, homeAddress: p.homeAddress,
-        faithStatus: p.faithStatus || 'visitor', comment: p.comment,
-        group: '', mentor: null, mentorId: null,
-        tasks: Object.fromEntries(stages.map(s => [s.id, Array(s.requirements.length).fill(false)])),
-        override: mkOverride(),
-      });
+  const colors = ['#d5e3fd', '#d3e4fe', '#cfdef5', '#dde3e9'];
+  const now = Date.now();
+  const newMembers = parsed.map((p, idx) => {
+    const fullName = `${p.firstName} ${p.surname}`.trim();
+    const initials = [p.firstName?.[0], p.surname?.[0]].filter(Boolean).join('').toUpperCase();
+    return createMemberDefaults({
+      id: now + idx,                       // ← THE FIX: unique id per row
+      name: fullName, initials,
+      avatarColor: colors[Math.floor(Math.random() * colors.length)],
+      joinDate: new Date().toISOString().split('T')[0],
+      currentStageIndex: 0, enrollmentStage: 'new_applicant', status: 'active',
+      email: p.email, phone: p.phone, gender: p.gender,
+      maritalStatus: p.maritalStatus, homeAddress: p.homeAddress,
+      faithStatus: p.faithStatus || 'visitor', comment: p.comment,
+      group: '', mentor: null, mentorId: null,
+      tasks: Object.fromEntries(stages.map(s => [s.id, Array(s.requirements.length).fill(false)])),
+      override: mkOverride(),
     });
-    onImport(newMembers);
-    setStep(3);
-  };
+  });
+  onImport(newMembers);
+  setStep(3);
+};
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
