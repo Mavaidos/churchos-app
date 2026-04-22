@@ -1,7 +1,15 @@
 // ─── src/pages/Members.jsx ───────────────────────────────────────────────────
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, hasPermission, getVisibleMembers, getLeaderGroupIds, createUserForMember } from '../lib/auth';
+import {
+  useAuth,
+  hasPermission,
+  getVisibleMembers,
+  getLeaderGroupIds,
+  createUserForMember,
+  getInviteStatus,
+  resetUserPassword,
+} from '../lib/auth';
 import { getMemberStageName } from '../lib/engine';
 import { mkOverride, createMemberDefaults } from '../lib/members';
 import { MemberAvatar, SmAvatar } from '../components/shared/Avatar';
@@ -13,7 +21,10 @@ import {
 } from '../lib/reports';
 
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
 function suggestGroupForAddress(address, members, groups) {
   if (!address || address.trim().length < 4) return null;
   const addr  = address.toLowerCase();
@@ -27,7 +38,31 @@ function suggestGroupForAddress(address, members, groups) {
   return scored[0] ?? null;
 }
 
-// ── Add Member Modal ──────────────────────────────────────────────────────────
+// Small pill component — top-level, NOT inside JSX
+function InviteStatusPill({ member, users }) {
+  const { status } = getInviteStatus(member, users);
+  if (status === 'active') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+      <span className="material-symbols-outlined text-xs ms-filled">verified</span>Logged in
+    </span>
+  );
+  if (status === 'invited_pending') return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary-container text-primary">
+      <span className="material-symbols-outlined text-xs">schedule</span>Awaiting first login
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+      <span className="material-symbols-outlined text-xs">mail_outline</span>Not invited
+    </span>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD MEMBER MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
 function AddMemberModal({ groups, stages, members = [], onClose, onSave }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
@@ -237,8 +272,11 @@ function AddMemberModal({ groups, stages, members = [], onClose, onSave }) {
   );
 }
 
-// ── Import Members Modal ──────────────────────────────────────────────────────
-// BUG FIX 3: removed require() calls — use the top-level imports directly
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMPORT MEMBERS MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
   const [step, setStep]       = useState(1);
   const [rawRows, setRawRows] = useState([]);
@@ -263,30 +301,29 @@ function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
     }
   };
 
-  // BUG FIX 3: uses imported createMemberDefaults + mkOverride, NOT require()
   const handleConfirm = () => {
-  const colors = ['#d5e3fd', '#d3e4fe', '#cfdef5', '#dde3e9'];
-  const now = Date.now();
-  const newMembers = parsed.map((p, idx) => {
-    const fullName = `${p.firstName} ${p.surname}`.trim();
-    const initials = [p.firstName?.[0], p.surname?.[0]].filter(Boolean).join('').toUpperCase();
-    return createMemberDefaults({
-      id: now + idx,                       // ← THE FIX: unique id per row
-      name: fullName, initials,
-      avatarColor: colors[Math.floor(Math.random() * colors.length)],
-      joinDate: new Date().toISOString().split('T')[0],
-      currentStageIndex: 0, enrollmentStage: 'new_applicant', status: 'active',
-      email: p.email, phone: p.phone, gender: p.gender,
-      maritalStatus: p.maritalStatus, homeAddress: p.homeAddress,
-      faithStatus: p.faithStatus || 'visitor', comment: p.comment,
-      group: '', mentor: null, mentorId: null,
-      tasks: Object.fromEntries(stages.map(s => [s.id, Array(s.requirements.length).fill(false)])),
-      override: mkOverride(),
+    const colors = ['#d5e3fd', '#d3e4fe', '#cfdef5', '#dde3e9'];
+    const now = Date.now();
+    const newMembers = parsed.map((p, idx) => {
+      const fullName = `${p.firstName} ${p.surname}`.trim();
+      const initials = [p.firstName?.[0], p.surname?.[0]].filter(Boolean).join('').toUpperCase();
+      return createMemberDefaults({
+        id: now + idx,
+        name: fullName, initials,
+        avatarColor: colors[Math.floor(Math.random() * colors.length)],
+        joinDate: new Date().toISOString().split('T')[0],
+        currentStageIndex: 0, enrollmentStage: 'new_applicant', status: 'active',
+        email: p.email, phone: p.phone, gender: p.gender,
+        maritalStatus: p.maritalStatus, homeAddress: p.homeAddress,
+        faithStatus: p.faithStatus || 'visitor', comment: p.comment,
+        group: '', mentor: null, mentorId: null,
+        tasks: Object.fromEntries(stages.map(s => [s.id, Array(s.requirements.length).fill(false)])),
+        override: mkOverride(),
+      });
     });
-  });
-  onImport(newMembers);
-  setStep(3);
-};
+    onImport(newMembers);
+    setStep(3);
+  };
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -364,7 +401,7 @@ function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
               </div>
               <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
                 <span className="material-symbols-outlined text-amber-600 text-sm flex-shrink-0 mt-0.5">warning</span>
-                <p className="text-xs text-amber-700">All imported members start as <strong>New Applicant</strong>. Approve them individually after import.</p>
+                <p className="text-xs text-amber-700">All imported members start as <strong>New Applicant</strong>. Approve them individually after import, then click "Invite" to create their login accounts.</p>
               </div>
             </div>
           )}
@@ -375,7 +412,7 @@ function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
                 <span className="material-symbols-outlined text-white text-4xl ms-filled">check_circle</span>
               </div>
               <h3 className="text-2xl font-extrabold font-headline">{parsed.length} Members Imported!</h3>
-              <p className="text-on-surface-variant text-sm">They appear in your Members list as New Applicants.</p>
+              <p className="text-on-surface-variant text-sm">They appear as <strong>Not Invited</strong> — use the yellow banner to send out login credentials.</p>
             </div>
           )}
         </div>
@@ -401,8 +438,12 @@ function ImportMembersModal({ groups, stages, members, onClose, onImport }) {
   );
 }
 
-// ── Members Page ──────────────────────────────────────────────────────────────
-export function Members({ members, groups, stages, setMembers, setUsers, setNewMemberCredentials, toast }) {
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEMBERS PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function Members({ members, groups, stages, users = [], setMembers, setUsers, setNewMemberCredentials, setBulkCredentials, toast }) {
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -410,8 +451,9 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
   const [filterStage,   setFilterStage]   = useState('All Stages');
   const [filterGroup,   setFilterGroup]   = useState('All Groups');
   const [filterStatus,  setFilterStatus]  = useState('All');
+  const [filterInvite,  setFilterInvite]  = useState('All');
   const [showAdd,       setShowAdd]       = useState(false);
-  const [showImport,    setShowImport]    = useState(false);   // ← import modal state
+  const [showImport,    setShowImport]    = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [editForm,      setEditForm]      = useState({});
   const [viewMode,      setViewMode]      = useState('card');
@@ -425,19 +467,27 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
   const visibleMembers = getVisibleMembers(user, members, groups);
   const filtered = visibleMembers.filter(m => {
     const q = search.toLowerCase();
+    const inviteStatus = getInviteStatus(m, users).status;
     return (
       (!q || m.name.toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q) || (m.phone || '').includes(q)) &&
       (filterStage  === 'All Stages' || getMemberStageName(m, stages) === filterStage) &&
       (filterGroup  === 'All Groups' || m.group === filterGroup) &&
-      (filterStatus === 'All'        || m.enrollmentStage === filterStatus)
+      (filterStatus === 'All'        || m.enrollmentStage === filterStatus) &&
+      (filterInvite === 'All' ||
+       (filterInvite === 'Not invited'    && inviteStatus === 'not_invited')    ||
+       (filterInvite === 'Awaiting login' && inviteStatus === 'invited_pending') ||
+       (filterInvite === 'Active'         && inviteStatus === 'active'))
     );
   });
 
-  useEffect(() => { setPage(1); }, [search, filterStage, filterGroup, filterStatus]);
+  useEffect(() => { setPage(1); }, [search, filterStage, filterGroup, filterStatus, filterInvite]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage   = Math.min(page, totalPages);
-  const paginated  = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const totalPages     = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage       = Math.min(page, totalPages);
+  const paginated      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const uninvitedCount = filtered.filter(m => getInviteStatus(m, users).status === 'not_invited').length;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleAdd = data => {
     const nm = { ...data, id: Date.now() };
@@ -454,10 +504,56 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
     toast(`✓ ${member.name} approved`);
   };
 
+  const handleInvite = member => {
+    const { status, user: existing } = getInviteStatus(member, users);
+
+    // Already invited, still pending first login → re-show the credentials
+    if (status === 'invited_pending' && existing.password) {
+      setNewMemberCredentials({ member, email: existing.email, tempPassword: existing.password });
+      return;
+    }
+    // Active user → they've set their own password; offer a reset instead
+    if (status === 'active') {
+      if (!window.confirm(`${member.name} has already set their own password. Reset to a new temp password?`)) return;
+      const { user: reset, tempPassword } = resetUserPassword(existing);
+      setUsers(prev => prev.map(u => u.id === reset.id ? reset : u));
+      setNewMemberCredentials({ member, email: reset.email, tempPassword });
+      return;
+    }
+    // Not invited yet → create fresh
+    const { user: nu, tempPassword } = createUserForMember(member);
+    setUsers(prev => [...prev, nu]);
+    setNewMemberCredentials({ member, email: nu.email, tempPassword });
+  };
+
+  const handleBulkInvite = () => {
+    const uninvited = filtered.filter(m => getInviteStatus(m, users).status === 'not_invited');
+    if (uninvited.length === 0) { toast('Everyone visible is already invited'); return; }
+    if (!window.confirm(`Create login accounts for ${uninvited.length} member${uninvited.length === 1 ? '' : 's'}?`)) return;
+
+    const created = uninvited.map(m => {
+      const { user: nu, tempPassword } = createUserForMember(m);
+      return { member: m, user: nu, email: nu.email, tempPassword };
+    });
+    setUsers(prev => [...prev, ...created.map(c => c.user)]);
+    setBulkCredentials(created.map(({ member, email, tempPassword }) => ({ member, email, tempPassword })));
+    toast(`✓ ${created.length} account${created.length === 1 ? '' : 's'} created`);
+  };
+
   const handleEditOpen = (m, e) => {
     e.stopPropagation();
     setEditingMember(m);
-    setEditForm({ name: m.name, phone: m.phone ?? '', email: m.email ?? '', maritalStatus: m.maritalStatus ?? '', spouseName: m.spouseName ?? '', faithStatus: m.faithStatus ?? 'visitor', comment: m.comment ?? '', homeAddress: m.homeAddress ?? '', avatarUrl: m.avatarUrl ?? null });
+    setEditForm({
+      name:          m.name,
+      phone:         m.phone ?? '',
+      email:         m.email ?? '',
+      maritalStatus: m.maritalStatus ?? '',
+      spouseName:    m.spouseName ?? '',
+      faithStatus:   m.faithStatus ?? 'visitor',
+      comment:       m.comment ?? '',
+      homeAddress:   m.homeAddress ?? '',
+      avatarUrl:     m.avatarUrl ?? null,
+    });
   };
 
   const handleEditSave = () => {
@@ -475,15 +571,18 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
     toast(`${m.name} removed`);
   };
 
+  // ── Style helpers ─────────────────────────────────────────────────────────
+
   const stagePillCls  = idx => ['bg-blue-100 text-blue-700','bg-cyan-100 text-cyan-700','bg-violet-100 text-violet-700','bg-green-100 text-green-700'][idx] ?? 'bg-surface-container text-on-surface-variant';
   const enrollPillCls = es  => ({ new_applicant: 'bg-amber-100 text-amber-700', approved: 'bg-primary-container text-primary', in_discipleship: 'bg-green-100 text-green-700' })[es] ?? 'bg-surface-container text-on-surface-variant';
   const enrollLabel   = es  => ({ new_applicant: 'New', approved: 'Approved', in_discipleship: 'Blueprint' })[es] ?? es;
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="fade-in">
 
       {/* ── Top bar ── */}
-      {/* BUG FIX 1: each button is its own sibling — no broken && nesting */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 h-16 flex items-center justify-between px-8">
         <span className="text-lg font-bold text-slate-800 font-headline">Members</span>
         <div className="flex items-center gap-3">
@@ -506,7 +605,7 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
               placeholder="Search members..." />
           </div>
 
-          {/* Export dropdown — always visible */}
+          {/* Export dropdown */}
           <div className="relative group">
             <button className="flex items-center gap-2 px-4 py-2 rounded-md border border-outline-variant/20 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-sm">download</span>Export
@@ -529,7 +628,7 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
             </div>
           </div>
 
-          {/* Import — admin/pastor only */}
+          {/* Import */}
           {hasPermission(user, 'enrol') && (
             <button onClick={() => setShowImport(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-md border border-outline-variant/20 text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
@@ -537,14 +636,13 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
             </button>
           )}
 
-          {/* Add member — admin/pastor only */}
+          {/* Add member */}
           {hasPermission(user, 'enrol') && (
             <button onClick={() => setShowAdd(true)}
               className="bg-primary hover:bg-primary-dim text-on-primary px-5 py-2 rounded-md flex items-center gap-2 font-semibold text-sm transition-all shadow-sm">
               <span className="material-symbols-outlined text-lg">add</span>Add Member
             </button>
           )}
-
         </div>
       </div>
 
@@ -572,12 +670,30 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
           );
         })()}
 
+        {/* Uninvited banner */}
+        {hasPermission(user, 'enrol') && uninvitedCount > 0 && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl mb-6">
+            <span className="material-symbols-outlined text-amber-600 flex-shrink-0 ms-filled">mail</span>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-amber-800">
+                {uninvitedCount} {uninvitedCount === 1 ? "member hasn't" : "members haven't"} been invited yet
+              </p>
+              <p className="text-xs text-amber-700">They have profiles but can't log in until you create their accounts.</p>
+            </div>
+            <button onClick={handleBulkInvite}
+              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-colors">
+              <span className="material-symbols-outlined text-sm">send</span>Invite {uninvitedCount > 1 ? 'All Visible' : 'Member'}
+            </button>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="bg-surface-container-low rounded-xl p-6 mb-8 flex flex-wrap items-center gap-8">
           {[
             { label: 'Stage',     value: filterStage,  set: setFilterStage,  opts: ['All Stages',  ...stages.map(s => s.name)] },
             { label: 'Group',     value: filterGroup,  set: setFilterGroup,  opts: ['All Groups',  ...groups.map(g => g.name)] },
             { label: 'Lifecycle', value: filterStatus, set: setFilterStatus, opts: ['All', 'new_applicant', 'approved', 'in_discipleship'] },
+            { label: 'Invite',    value: filterInvite, set: setFilterInvite, opts: ['All', 'Not invited', 'Awaiting login', 'Active'] },
           ].map(fi => (
             <div key={fi.label}>
               <label className="text-[10px] uppercase font-bold tracking-[0.1em] text-outline mb-2 block">{fi.label}</label>
@@ -589,39 +705,65 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
           ))}
         </div>
 
-        {/* Card view */}
+        {/* ── Card view ── */}
         {viewMode === 'card' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {paginated.map(m => (
-              <div key={m.id} className="member-card bg-surface-container-lowest rounded-xl p-6 cursor-pointer" onClick={() => navigate(`/members/${m.id}`)}>
-                <div className="flex items-start justify-between mb-5">
-                  <div className="border-4 border-white shadow-sm rounded-2xl overflow-hidden"><MemberAvatar member={m} size={56} /></div>
-                  <StatusBadge status={m.status} enrollmentStage={m.enrollmentStage} />
-                </div>
-                <div className="mb-5">
-                  <h3 className="text-lg font-bold text-on-surface mb-1 font-headline">{m.name}</h3>
-                  <p className="text-on-surface-variant text-sm">{m.group || <span className="italic text-outline-variant">New Enrolment</span>}</p>
-                </div>
-                <div className="pt-5 border-t border-surface-container flex items-center justify-between">
-                  <StageBadge stageName={getMemberStageName(m, stages)} stageIndex={m.currentStageIndex} />
-                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                    <button onClick={e => handleEditOpen(m, e)} className="p-1.5 rounded-lg hover:bg-primary-container/30 text-outline-variant hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-sm">edit</span>
-                    </button>
-                    <button onClick={e => handleDelete(m, e)} className="p-1.5 rounded-lg hover:bg-error-container/20 text-outline-variant hover:text-error transition-colors">
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
+            {paginated.map(m => {
+              const inviteStatus = getInviteStatus(m, users).status;
+              return (
+                <div key={m.id} className="member-card bg-surface-container-lowest rounded-xl p-6 cursor-pointer" onClick={() => navigate(`/members/${m.id}`)}>
+                  <div className="flex items-start justify-between mb-5">
+                    <div className="border-4 border-white shadow-sm rounded-2xl overflow-hidden"><MemberAvatar member={m} size={56} /></div>
+                    <StatusBadge status={m.status} enrollmentStage={m.enrollmentStage} />
                   </div>
-                </div>
-                {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
-                  <div className="mt-4 pt-4 border-t border-surface-container" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => handleApprove(m)} className="w-full py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors">
-                      <span className="material-symbols-outlined text-sm ms-filled">check_circle</span>Approve Member
-                    </button>
+                  <div className="mb-5">
+                    <h3 className="text-lg font-bold text-on-surface mb-1 font-headline">{m.name}</h3>
+                    <p className="text-on-surface-variant text-sm">{m.group || <span className="italic text-outline-variant">New Enrolment</span>}</p>
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="pt-5 border-t border-surface-container flex items-center justify-between">
+                    <StageBadge stageName={getMemberStageName(m, stages)} stageIndex={m.currentStageIndex} />
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button onClick={e => handleEditOpen(m, e)} className="p-1.5 rounded-lg hover:bg-primary-container/30 text-outline-variant hover:text-primary transition-colors">
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
+                      <button onClick={e => handleDelete(m, e)} className="p-1.5 rounded-lg hover:bg-error-container/20 text-outline-variant hover:text-error transition-colors">
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Approve button — only for new applicants */}
+                  {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
+                    <div className="mt-4 pt-4 border-t border-surface-container" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => handleApprove(m)} className="w-full py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors">
+                        <span className="material-symbols-outlined text-sm ms-filled">check_circle</span>Approve Member
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Invite row — admin/pastor only */}
+                  {hasPermission(user, 'enrol') && (
+                    <div className="mt-4 pt-4 border-t border-surface-container flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                      <InviteStatusPill member={m} users={users} />
+                      {inviteStatus === 'not_invited' ? (
+                        <button onClick={() => handleInvite(m)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-primary bg-primary-container/30 hover:bg-primary-container/50 transition-colors">
+                          <span className="material-symbols-outlined text-xs">send</span>Invite
+                        </button>
+                      ) : inviteStatus === 'invited_pending' ? (
+                        <button onClick={() => handleInvite(m)}
+                          className="text-[11px] font-bold text-primary hover:underline">Resend</button>
+                      ) : (
+                        <button onClick={() => handleInvite(m)}
+                          className="text-[11px] font-bold text-outline-variant hover:text-primary hover:underline">Reset password</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* "Add New Member" tile */}
             {hasPermission(user, 'enrol') && (
               <div onClick={() => setShowAdd(true)} className="border-2 border-dashed border-outline-variant/20 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-primary/40 transition-all cursor-pointer group">
                 <span className="material-symbols-outlined text-outline-variant group-hover:text-primary mb-2 transition-colors text-3xl">person_add</span>
@@ -631,58 +773,76 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
           </div>
         )}
 
-        {/* List view */}
+        {/* ── List view ── */}
         {viewMode === 'list' && (
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/10 overflow-hidden shadow-sm">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-surface-container bg-surface-container-low/70">
-                  {['Member', 'Phone', 'Group', 'Stage', 'Status', 'Actions'].map(h => (
+                  {['Member', 'Phone', 'Group', 'Stage', 'Status', 'Login', 'Actions'].map(h => (
                     <th key={h} className="text-left px-5 py-3.5 text-[10px] font-bold uppercase tracking-widest text-outline whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {paginated.map(m => (
-                  <tr key={m.id} className="border-b border-surface-container hover:bg-surface-container-low/60 transition-colors group cursor-pointer" onClick={() => navigate(`/members/${m.id}`)}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <MemberAvatar member={m} size={36} ring />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-on-surface truncate leading-tight">{m.name}</p>
-                          <p className="text-xs text-on-surface-variant truncate mt-0.5">{m.email || '—'}</p>
+                {paginated.map(m => {
+                  const inviteStatus = getInviteStatus(m, users).status;
+                  return (
+                    <tr key={m.id} className="border-b border-surface-container hover:bg-surface-container-low/60 transition-colors group cursor-pointer" onClick={() => navigate(`/members/${m.id}`)}>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <MemberAvatar member={m} size={36} ring />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-on-surface truncate leading-tight">{m.name}</p>
+                            <p className="text-xs text-on-surface-variant truncate mt-0.5">{m.email || '—'}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3"><span className="text-sm text-on-surface-variant">{m.phone || '—'}</span></td>
-                    <td className="px-5 py-3"><span className="text-sm text-on-surface-variant truncate block max-w-[130px]">{m.group || <span className="italic text-outline-variant">None</span>}</span></td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${stagePillCls(m.currentStageIndex)}`}>
-                        {getMemberStageName(m, stages)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${enrollPillCls(m.enrollmentStage)}`}>
-                        {enrollLabel(m.enrollmentStage)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={e => handleEditOpen(m, e)} className="p-1.5 rounded-lg text-outline-variant hover:text-primary hover:bg-primary-container/30 transition-colors">
-                          <span className="material-symbols-outlined text-sm">edit</span>
-                        </button>
-                        <button onClick={e => handleDelete(m, e)} className="p-1.5 rounded-lg text-outline-variant hover:text-error hover:bg-error-container/20 transition-colors">
-                          <span className="material-symbols-outlined text-sm">delete</span>
-                        </button>
-                        {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
-                          <button onClick={() => handleApprove(m)} className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-green-700 bg-green-100 hover:bg-green-200 transition-colors whitespace-nowrap flex items-center gap-1">
-                            <span className="material-symbols-outlined text-xs ms-filled">check_circle</span>Approve
+                      </td>
+                      <td className="px-5 py-3"><span className="text-sm text-on-surface-variant">{m.phone || '—'}</span></td>
+                      <td className="px-5 py-3"><span className="text-sm text-on-surface-variant truncate block max-w-[130px]">{m.group || <span className="italic text-outline-variant">None</span>}</span></td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${stagePillCls(m.currentStageIndex)}`}>
+                          {getMemberStageName(m, stages)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${enrollPillCls(m.enrollmentStage)}`}>
+                          {enrollLabel(m.enrollmentStage)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <InviteStatusPill member={m} users={users} />
+                      </td>
+                      <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={e => handleEditOpen(m, e)} className="p-1.5 rounded-lg text-outline-variant hover:text-primary hover:bg-primary-container/30 transition-colors">
+                            <span className="material-symbols-outlined text-sm">edit</span>
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <button onClick={e => handleDelete(m, e)} className="p-1.5 rounded-lg text-outline-variant hover:text-error hover:bg-error-container/20 transition-colors">
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                          {m.enrollmentStage === 'new_applicant' && hasPermission(user, 'approve', m) && (
+                            <button onClick={() => handleApprove(m)} className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-green-700 bg-green-100 hover:bg-green-200 transition-colors whitespace-nowrap flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs ms-filled">check_circle</span>Approve
+                            </button>
+                          )}
+                          {hasPermission(user, 'enrol') && inviteStatus === 'not_invited' && (
+                            <button onClick={() => handleInvite(m)}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-primary bg-primary-container/30 hover:bg-primary-container/50 transition-colors whitespace-nowrap flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs">send</span>Invite
+                            </button>
+                          )}
+                          {hasPermission(user, 'enrol') && inviteStatus === 'invited_pending' && (
+                            <button onClick={() => handleInvite(m)}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary-container/30 transition-colors whitespace-nowrap">
+                              Resend
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {filtered.length === 0 && (
@@ -694,7 +854,7 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
           </div>
         )}
 
-        {/* Pagination */}
+        {/* ── Pagination ── */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-6">
             <p className="text-sm text-on-surface-variant">
@@ -726,7 +886,6 @@ export function Members({ members, groups, stages, setMembers, setUsers, setNewM
           onClose={() => setShowAdd(false)} onSave={handleAdd} />
       )}
 
-      {/* BUG FIX 2: showImport modal is INSIDE the return, before the final closing div */}
       {showImport && (
         <ImportMembersModal groups={groups} stages={stages} members={members}
           onClose={() => setShowImport(false)}

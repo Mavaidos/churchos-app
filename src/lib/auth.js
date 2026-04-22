@@ -190,3 +190,20 @@ export function createUserForMember(member) {
 
   return { user, tempPassword };
 }
+// Determines where a member sits in the invitation lifecycle
+export function getInviteStatus(member, users = []) {
+  const acct = users.find(u => u.memberId === member.id);
+  if (!acct) return { status: 'not_invited', user: null };
+  if (acct.mustSetPassword) return { status: 'invited_pending', user: acct };
+  return { status: 'active', user: acct };
+}
+
+// Generates a new temp password for an existing user account
+// Used for "Reset password" on already-active users
+export function resetUserPassword(user) {
+  const tempPassword = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return {
+    user: { ...user, password: tempPassword, passwordHash: null, mustSetPassword: true },
+    tempPassword,
+  };
+}

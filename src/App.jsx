@@ -601,6 +601,109 @@ function AddMemberModal({ groups, stages, members = [], onClose, onSave }) {
     </div>
   );
 }
+function BulkCredentialsModal({ entries, onClose }) {
+  const [copied, setCopied] = useState(false);
+
+  const asCSV = [
+    'Name,Email,Temp Password,Login URL',
+    ...entries.map(e =>
+      `"${e.member.name}","${e.email}","${e.tempPassword}","${window.location.origin}"`
+    ),
+  ].join('\n');
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(asCSV).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([asCSV], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `invitations-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const waLink = e =>
+    `https://wa.me/${(e.member.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
+      `Hi ${e.member.name.split(' ')[0]}! Your ChurchOS login:\n` +
+      `${window.location.origin}\nEmail: ${e.email}\nTemp password: ${e.tempPassword}\n` +
+      `You'll set your own password on first login.`
+    )}`;
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-3xl mx-4 slide-in overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="bg-green-50 border-b-2 border-green-100 px-7 pt-7 pb-5 flex-shrink-0">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="material-symbols-outlined text-white ms-filled text-2xl">mail</span>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-green-700">Bulk Invitations Created</p>
+              <h3 className="text-xl font-bold font-headline text-on-surface">
+                {entries.length} account{entries.length === 1 ? '' : 's'} ready to share
+              </h3>
+            </div>
+          </div>
+          <p className="text-xs text-green-800 leading-relaxed bg-green-100/70 rounded-xl px-4 py-2.5">
+            <strong>Save this list now.</strong> Temp passwords won't be recoverable after this window closes (unless a member hasn't logged in yet — then you can resend individually).
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface-container-low">
+              <tr className="border-b border-surface-container">
+                {['Name', 'Email', 'Temp Password', 'Share'].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wide text-outline">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={i} className="border-b border-surface-container/50 hover:bg-surface-container-low/50">
+                  <td className="px-4 py-2.5 font-semibold text-on-surface whitespace-nowrap">{e.member.name}</td>
+                  <td className="px-4 py-2.5 text-on-surface-variant font-mono">{e.email}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="font-mono font-bold text-primary tracking-widest">{e.tempPassword}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {e.member.phone ? (
+                      <a href={waLink(e)} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#25D366] text-white text-[10px] font-bold hover:opacity-90">
+                        <span className="material-symbols-outlined text-xs">chat</span>WhatsApp
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-outline-variant italic">no phone</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-6 border-t border-surface-container flex gap-3 justify-end flex-shrink-0 bg-surface-container-lowest">
+          <button onClick={handleCopy}
+            className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-colors flex items-center gap-2 ${copied ? 'bg-green-500 text-white' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'}`}>
+            <span className="material-symbols-outlined text-sm">{copied ? 'check_circle' : 'content_copy'}</span>
+            {copied ? 'Copied' : 'Copy as CSV'}
+          </button>
+          <button onClick={handleDownload}
+            className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-colors flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">download</span>Download CSV
+          </button>
+          <button onClick={onClose}
+            className="px-6 py-2.5 text-sm font-semibold bg-primary text-on-primary rounded-xl hover:bg-primary-dim transition-colors shadow-sm">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // =============================================================================
 // ROLE GUARD + UNAUTHORIZED
@@ -669,6 +772,7 @@ export default function App() {
   const [showEnrolModal, setShowEnrolModal]           = useState(false);
   const [user, setUser]                               = useState(null);
   const [newMemberCredentials, setNewMemberCredentials] = useState(null);
+  const [bulkCredentials, setBulkCredentials] = useState(null); // array | null
 
   const toast  = msg => setToastMsg(msg);
   const login  = u   => setUser(u);
@@ -749,9 +853,13 @@ export default function App() {
             } />
             <Route path="/members" element={
               <RoleGuard roles={["pastor","admin","leader"]}>
-                <Members members={members} groups={groups} stages={stages}
-                  setMembers={setMembers} setUsers={setUsers}
-                  setNewMemberCredentials={setNewMemberCredentials} toast={toast} />
+                <Members
+  members={members} groups={groups} stages={stages}
+  users={users}                        // ← add
+  setMembers={setMembers} setUsers={setUsers}
+  setNewMemberCredentials={setNewMemberCredentials}
+  setBulkCredentials={setBulkCredentials}   // ← add
+  toast={toast} />
               </RoleGuard>
             } />
             <Route path="/members/:id" element={
@@ -833,6 +941,11 @@ export default function App() {
         <CredentialsModal member={newMemberCredentials.member} credentials={newMemberCredentials}
           onClose={() => setNewMemberCredentials(null)} />
       )}
+      {bulkCredentials && (
+  <BulkCredentialsModal
+    entries={bulkCredentials}
+    onClose={() => setBulkCredentials(null)} />
+)}
     </AuthContext.Provider>
   );
 }
