@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('./node_modules/gsap/package.json'\\) && console.log\\('gsap installed:', require\\('./node_modules/gsap/package.json'\\).version\\)\")",
+      "Bash(npm run *)"
     ]
   }
 }

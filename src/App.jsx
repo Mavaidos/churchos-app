@@ -35,6 +35,7 @@ import { Toast } from "./components/shared/Toast";
 import { Sidebar } from "./components/layout/Sidebar";
 
 // ── Pages (each page is its own file in src/pages/) ──────────────────────────
+import { LandingPage }  from "./pages/LandingPage";
 import { Dashboard }    from "./pages/Dashboard";
 import { Members }      from "./pages/Members";
 import { MemberDetail } from "./pages/MembersDetail";
@@ -774,9 +775,11 @@ export default function App() {
   const [newMemberCredentials, setNewMemberCredentials] = useState(null);
   const [bulkCredentials, setBulkCredentials] = useState(null); // array | null
 
+  const [showLanding, setShowLanding] = useState(true);
+
   const toast  = msg => setToastMsg(msg);
-  const login  = u   => setUser(u);
-  const logout = ()  => setUser(null);
+  const login  = u   => { setUser(u); setShowLanding(false); };
+  const logout = ()  => { setUser(null); setShowLanding(true); };
 
   const handleEnrol = data => {
     const nm = { ...data, id: Date.now() };
@@ -796,6 +799,13 @@ export default function App() {
 
   // ── Auth gate 1: not logged in ────────────────────────────────────────────
   if (!user) {
+    if (showLanding) {
+      return (
+        <AuthContext.Provider value={{ user: null, login, logout }}>
+          <LandingPage onSignIn={() => setShowLanding(false)} />
+        </AuthContext.Provider>
+      );
+    }
     return (
       <AuthContext.Provider value={{ user: null, login, logout }}>
         <LoginPage onLogin={login} users={users} />
